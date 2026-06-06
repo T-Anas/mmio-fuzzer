@@ -1,0 +1,27 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+*.pdb
+
+# Generated firmware fixtures
+/fixtures/build/
+*.o
+*.elf
+*.bin
+*.map
+*.lst
+
+# Fuzzing outputs
+/crashes/
+/hangs/
+/corpus.out/
+*.mmf
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Local toolchain overrides
+.env
