@@ -7,8 +7,12 @@
 
 pub mod access;
 pub mod addr;
+pub mod bus;
 pub mod error;
+pub mod memory;
 
 pub use access::{Access, AccessKind, AccessWidth};
 pub use addr::PhysAddr;
+pub use bus::{AccessObserver, Bus, FnObserver};
 pub use error::{CoreError, Result};
+pub use memory::{MemoryMap, MemoryRegion, Permissions, RegionKind};
