@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mmio-core"]
+members = ["crates/mmio-core", "crates/mmio-emu"]
 
 [workspace.package]
 version = "0.1.0"
