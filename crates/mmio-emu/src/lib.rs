@@ -18,9 +18,11 @@
 
 pub mod decode;
 pub mod exec;
+pub mod loader;
 pub mod memory;
 pub mod regs;
 
+pub use loader::{Image, LoadError, Segment};
 pub use memory::FlatMemory;
 pub use regs::{Cpu, Xpsr};
 
