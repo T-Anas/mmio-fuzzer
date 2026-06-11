@@ -5,9 +5,6 @@
 
 # Generated firmware fixtures
 /fixtures/build/
-*.o
-*.elf
-*.bin
 *.map
 *.lst
 
