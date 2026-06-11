@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 mmio-core.workspace = true
 thiserror.workspace = true
+object.workspace = true
 
 [dev-dependencies]
 mmio-core.workspace = true
