@@ -93,7 +93,8 @@ fn analyse(reg: &mut RegisterModel, events: &[Event], config: &InferConfig) {
 }
 
 fn analyse_constness(reg: &mut RegisterModel) {
-    if reg.reads > 0 && reg.read_values.len() == 1 {
+    // Require more than one sample: a single read says nothing about constancy.
+    if reg.reads >= 2 && reg.read_values.len() == 1 {
         reg.constant_read = reg.read_values.iter().next().copied();
     }
 }
