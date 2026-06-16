@@ -67,22 +67,6 @@ impl PeripheralModel {
             (u16::from_le_bytes([digest.as_bytes()[0], digest.as_bytes()[1]]) as usize) % values.len();
         values[index]
     }
-
-    /// A value derived purely from the input, for unknown registers.
-    fn hash_value(&self, addr: u32, counter: u32) -> u32 {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(b"unknown");
-        hasher.update(&addr.to_le_bytes());
-        hasher.update(&counter.to_le_bytes());
-        hasher.update(&self.input.bytes);
-        let digest = hasher.finalize();
-        u32::from_le_bytes([
-            digest.as_bytes()[0],
-            digest.as_bytes()[1],
-            digest.as_bytes()[2],
-            digest.as_bytes()[3],
-        ])
-    }
 }
 
 impl MmioHandler for PeripheralModel {
@@ -112,7 +96,9 @@ impl MmioHandler for PeripheralModel {
                     let values = reg.plausible_reads();
                     self.select(a, counter, &values)
                 }
-                None => self.hash_value(a, counter),
+                // Unknown registers read as zero during profiling so the
+                // firmware's behaviour is deterministic and observable.
+                None => self.fallback,
             }
         };
 
