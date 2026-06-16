@@ -55,6 +55,15 @@ pub enum HighOp {
     Mov,
 }
 
+/// Sign/zero extension variants in the miscellaneous group.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExtendKind {
+    Sxth,
+    Sxtb,
+    Uxth,
+    Uxtb,
+}
+
 /// Transfer width for load/store instructions.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MemSize {
@@ -134,6 +143,11 @@ pub enum Inst {
     },
     High {
         op: HighOp,
+        rd: u8,
+        rm: u8,
+    },
+    Extend {
+        kind: ExtendKind,
         rd: u8,
         rm: u8,
     },
@@ -455,6 +469,20 @@ fn decode_misc(hw: u16) -> Inst {
             regs: f(7, 0) as u16,
             lr: b(8) != 0,
         },
+        // Sign/zero extend: 1011 0010 op Rm Rd.
+        0b0010 => {
+            let kind = match f(7, 6) {
+                0b00 => ExtendKind::Sxth,
+                0b01 => ExtendKind::Sxtb,
+                0b10 => ExtendKind::Uxth,
+                _ => ExtendKind::Uxtb,
+            };
+            Inst::Extend {
+                kind,
+                rm: f(5, 3) as u8,
+                rd: f(2, 0) as u8,
+            }
+        }
         // SETEND (bit4=0) or CPS (bit4=1). We only model the CPS forms.
         0b0110 => {
             if b(4) != 0 {
@@ -665,6 +693,28 @@ mod tests {
     #[test]
     fn decodes_nop() {
         assert_eq!(decode16(0xBF00), Inst::Nop);
+    }
+
+    #[test]
+    fn decodes_extend_instructions() {
+        // UXTH r1, r3 = 0xB299
+        assert_eq!(
+            decode16(0xB299),
+            Inst::Extend {
+                kind: ExtendKind::Uxth,
+                rd: 1,
+                rm: 3
+            }
+        );
+        // UXTB r3, r3 = 0xB2DB
+        assert_eq!(
+            decode16(0xB2DB),
+            Inst::Extend {
+                kind: ExtendKind::Uxtb,
+                rd: 3,
+                rm: 3
+            }
+        );
     }
 
     #[test]

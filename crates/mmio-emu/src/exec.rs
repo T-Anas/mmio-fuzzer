@@ -114,6 +114,17 @@ impl<B: Bus> CortexM<B> {
                 }
             }
 
+            Inst::Extend { kind, rd, rm } => {
+                let value = self.reg(rm);
+                let extended = match kind {
+                    crate::decode::ExtendKind::Sxtb => (value as u8 as i8 as i32) as u32,
+                    crate::decode::ExtendKind::Sxth => (value as u16 as i16 as i32) as u32,
+                    crate::decode::ExtendKind::Uxtb => value & 0xff,
+                    crate::decode::ExtendKind::Uxth => value & 0xffff,
+                };
+                self.cpu.write_reg(rd as usize, extended);
+            }
+
             Inst::Bx { rm, link } => {
                 let target = self.reg(rm);
                 if link {
