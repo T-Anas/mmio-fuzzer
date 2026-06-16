@@ -44,6 +44,9 @@ pub struct EngineConfig {
     pub fallback: u32,
     /// Stop recording findings past this many.
     pub max_findings: usize,
+    /// Treat a run as hung once this many instructions pass without new
+    /// coverage. This detects tight loops long before the step budget.
+    pub no_edge_limit: u64,
 }
 
 impl Default for EngineConfig {
@@ -56,6 +59,7 @@ impl Default for EngineConfig {
             max_discovery_candidates: 40,
             fallback: 0,
             max_findings: 64,
+            no_edge_limit: 8_192,
         }
     }
 }
@@ -195,13 +199,9 @@ impl Engine {
         let polled: Vec<u32> = polled_addresses(&observations);
         let mut overrides = HashMap::new();
         for addr in polled {
-            if let Some(value) = self.discover_ready(
-                addr,
-                &observations,
-                &overrides,
-                &baseline.coverage,
-                baseline.steps,
-            ) {
+            if let Some(value) =
+                self.discover_ready(addr, &observations, &overrides, &baseline.coverage)
+            {
                 overrides.insert(addr, value);
                 if let Some(reg) = register_mut(&mut observations, addr) {
                     reg.ready_value = Some(value);
@@ -235,7 +235,6 @@ impl Engine {
         model: &HardwareModel,
         overrides: &HashMap<u32, u32>,
         baseline: &Coverage,
-        baseline_steps: u64,
     ) -> Option<u32> {
         let mut candidates: Vec<u32> = Vec::new();
         for bit in 0..32 {
@@ -255,9 +254,9 @@ impl Engine {
             let mut trial = overrides.clone();
             trial.insert(addr, candidate);
             let run = self.execute(&Input::new(), model, &trial);
-            let new_edges = baseline.count_new(&run.coverage) > 0;
-            let ran_longer = run.steps > baseline_steps.saturating_mul(3) / 2;
-            if new_edges || ran_longer {
+            // Success means the firmware left the poll loop and went
+            // somewhere the baseline never reached.
+            if baseline.count_new(&run.coverage) > 0 {
                 return Some(candidate);
             }
         }
@@ -295,9 +294,17 @@ impl Engine {
                 format!("reset failed: {error}"),
             ));
         } else {
+            let mut since_new_edge = 0u64;
             loop {
                 let pc = core.pc().raw();
+                let edges_before = coverage.edges();
                 coverage.record(pc);
+                if coverage.edges() > edges_before {
+                    since_new_edge = 0;
+                } else {
+                    since_new_edge += 1;
+                }
+
                 match core.step() {
                     Ok(()) => {
                         steps += 1;
@@ -307,6 +314,15 @@ impl Engine {
                                 pc,
                                 steps,
                                 "HardFault exception taken",
+                            ));
+                            break;
+                        }
+                        if since_new_edge >= self.config.no_edge_limit {
+                            anomaly = Some(Anomaly::new(
+                                AnomalyKind::Hang,
+                                pc,
+                                steps,
+                                "no new coverage (tight loop)",
                             ));
                             break;
                         }
@@ -369,7 +385,7 @@ fn polled_addresses(model: &HardwareModel) -> Vec<u32> {
         .blocks
         .iter()
         .flat_map(|block| &block.registers)
-        .filter(|reg| reg.polled && reg.constant_read.is_none())
+        .filter(|reg| reg.polled)
         .map(|reg| reg.addr)
         .collect();
     addrs.sort_unstable();
@@ -415,7 +431,7 @@ fn merge_register(dst: &mut RegisterModel, src: &RegisterModel) {
     if dst.ready_value.is_none() {
         dst.ready_value = src.ready_value;
     }
-    if dst.constant_read.is_none() && dst.reads > 0 && dst.read_values.len() == 1 {
+    if dst.constant_read.is_none() && dst.reads >= 2 && dst.read_values.len() == 1 {
         dst.constant_read = dst.read_values.iter().next().copied();
     }
 }
