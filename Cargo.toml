@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mmio-core", "crates/mmio-emu", "crates/mmio-infer", "crates/mmio-fuzz"]
+members = ["crates/mmio-core", "crates/mmio-emu", "crates/mmio-infer", "crates/mmio-fuzz", "crates/mmio-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ readme = "README.md"
 mmio-core = { path = "crates/mmio-core", version = "0.1.0" }
 mmio-emu = { path = "crates/mmio-emu", version = "0.1.0" }
 mmio-infer = { path = "crates/mmio-infer", version = "0.1.0" }
+mmio-fuzz = { path = "crates/mmio-fuzz", version = "0.1.0" }
 anyhow = "1"
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }

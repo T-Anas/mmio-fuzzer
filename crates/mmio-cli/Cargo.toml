@@ -1,0 +1,20 @@
+[package]
+name = "mmio-cli"
+description = "Command-line interface for the mmio-fuzz toolchain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "mmio-fuzz"
+path = "src/main.rs"
+
+[dependencies]
+mmio-fuzz.workspace = true
+mmio-infer.workspace = true
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
+serde_json.workspace = true
