@@ -116,6 +116,18 @@ impl Engine {
         &self.model
     }
 
+    pub fn config_mut(&mut self) -> &mut EngineConfig {
+        &mut self.config
+    }
+
+    /// Runs one input against the profiled model, returning any anomaly.
+    ///
+    /// Call [`Engine::profile`] first; this is what `mmio-fuzz replay` uses to
+    /// confirm a testcase reproduces.
+    pub fn check(&self, input: &Input) -> Option<Anomaly> {
+        self.execute(input, &self.model, &self.overrides).anomaly
+    }
+
     pub fn findings(&self) -> &[Testcase] {
         &self.findings
     }
