@@ -144,10 +144,9 @@ impl FlatMemory {
             .to_string();
         let region_base = self.map.find(base).expect("region exists").base;
         let offset = (base - region_base) as usize;
-        let data = self
-            .data
-            .get_mut(&name)
-            .ok_or(CoreError::Bus(format!("region {name} has no backing store")))?;
+        let data = self.data.get_mut(&name).ok_or(CoreError::Bus(format!(
+            "region {name} has no backing store"
+        )))?;
         if offset + bytes.len() > data.len() {
             return Err(CoreError::Bus(format!(
                 "image of {} bytes does not fit in region {name}",
@@ -168,7 +167,14 @@ impl FlatMemory {
         self.data.get(&region.name).map(|d| read_le(d, off, width))
     }
 
-    fn record(&mut self, kind: AccessKind, addr: PhysAddr, width: AccessWidth, value: u32, pc: u32) {
+    fn record(
+        &mut self,
+        kind: AccessKind,
+        addr: PhysAddr,
+        width: AccessWidth,
+        value: u32,
+        pc: u32,
+    ) {
         self.seq += 1;
         let pc = if pc != 0 { pc } else { self.current_pc };
         let access = Access::new(kind, addr, width, value, pc, self.seq);
@@ -291,9 +297,13 @@ mod tests {
         let mut m = memory();
         m.write(PhysAddr::new(0x2000_0000), AccessWidth::Word, 0xdead_beef)
             .unwrap();
-        assert_eq!(m.peek(PhysAddr::new(0x2000_0000), AccessWidth::Byte), Some(0xef));
         assert_eq!(
-            m.read(PhysAddr::new(0x2000_0000), AccessWidth::Word).unwrap(),
+            m.peek(PhysAddr::new(0x2000_0000), AccessWidth::Byte),
+            Some(0xef)
+        );
+        assert_eq!(
+            m.read(PhysAddr::new(0x2000_0000), AccessWidth::Word)
+                .unwrap(),
             0xdead_beef
         );
     }
@@ -302,7 +312,8 @@ mod tests {
     fn mmio_defaults_to_zero_and_swallows_writes() {
         let mut m = memory();
         assert_eq!(
-            m.read(PhysAddr::new(0x4000_0004), AccessWidth::Word).unwrap(),
+            m.read(PhysAddr::new(0x4000_0004), AccessWidth::Word)
+                .unwrap(),
             0
         );
         m.write(PhysAddr::new(0x4000_0004), AccessWidth::Word, 0x1234)
@@ -316,7 +327,8 @@ mod tests {
         assert!(matches!(err, Err(CoreError::Unmapped { .. })));
         m.set_strict(false);
         assert_eq!(
-            m.read(PhysAddr::new(0x5000_0000), AccessWidth::Word).unwrap(),
+            m.read(PhysAddr::new(0x5000_0000), AccessWidth::Word)
+                .unwrap(),
             0
         );
     }
@@ -332,17 +344,21 @@ mod tests {
         m.set_observer(mmio_core::FnObserver(move |a: &Access| {
             sink.borrow_mut().push(a.addr.raw())
         }));
-        m.write(PhysAddr::new(0x2000_0000), AccessWidth::Word, 1).unwrap();
-        m.read(PhysAddr::new(0x4000_0000), AccessWidth::Word).unwrap();
+        m.write(PhysAddr::new(0x2000_0000), AccessWidth::Word, 1)
+            .unwrap();
+        m.read(PhysAddr::new(0x4000_0000), AccessWidth::Word)
+            .unwrap();
         assert_eq!(&*seen.borrow(), &[0x2000_0000, 0x4000_0000]);
     }
 
     #[test]
     fn load_image_places_bytes() {
         let mut m = memory();
-        m.load_image(PhysAddr::new(0x0800_0000), &[1, 2, 3, 4]).unwrap();
+        m.load_image(PhysAddr::new(0x0800_0000), &[1, 2, 3, 4])
+            .unwrap();
         assert_eq!(
-            m.read(PhysAddr::new(0x0800_0000), AccessWidth::Word).unwrap(),
+            m.read(PhysAddr::new(0x0800_0000), AccessWidth::Word)
+                .unwrap(),
             0x0403_0201
         );
     }

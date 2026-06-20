@@ -184,11 +184,25 @@ mod tests {
     use mmio_core::{Access, AccessWidth, PhysAddr};
 
     fn read(addr: u32, value: u32, pc: u32, seq: u64) -> Access {
-        Access::new(AccessKind::Read, PhysAddr::new(addr), AccessWidth::Word, value, pc, seq)
+        Access::new(
+            AccessKind::Read,
+            PhysAddr::new(addr),
+            AccessWidth::Word,
+            value,
+            pc,
+            seq,
+        )
     }
 
     fn write(addr: u32, value: u32, seq: u64) -> Access {
-        Access::new(AccessKind::Write, PhysAddr::new(addr), AccessWidth::Word, value, 0, seq)
+        Access::new(
+            AccessKind::Write,
+            PhysAddr::new(addr),
+            AccessWidth::Word,
+            value,
+            0,
+            seq,
+        )
     }
 
     fn run(accesses: Vec<Access>) -> HardwareModel {

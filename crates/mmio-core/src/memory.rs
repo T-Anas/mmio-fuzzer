@@ -111,7 +111,7 @@ impl MemoryRegion {
     #[inline]
     pub const fn offset(&self, addr: PhysAddr) -> Option<u32> {
         if self.contains(addr) {
-            Some((addr.raw() - self.base.raw()) as u32)
+            Some(addr.raw() - self.base.raw())
         } else {
             None
         }

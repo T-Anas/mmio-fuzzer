@@ -75,15 +75,13 @@ fn main() -> Result<()> {
 }
 
 fn build_config(seed: Option<u64>, max_steps: Option<u64>, iterations: u64) -> EngineConfig {
-    let mut config = EngineConfig::default();
-    config.iterations = iterations;
-    if let Some(seed) = seed {
-        config.seed = seed;
+    let defaults = EngineConfig::default();
+    EngineConfig {
+        iterations,
+        seed: seed.unwrap_or(defaults.seed),
+        max_steps: max_steps.unwrap_or(defaults.max_steps),
+        ..defaults
     }
-    if let Some(max_steps) = max_steps {
-        config.max_steps = max_steps;
-    }
-    config
 }
 
 fn load_firmware(path: &PathBuf) -> Result<Firmware> {
@@ -152,8 +150,8 @@ fn infer(firmware: PathBuf, out: Option<PathBuf>) -> Result<()> {
 }
 
 fn replay(case: PathBuf, firmware: PathBuf) -> Result<()> {
-    let text = std::fs::read_to_string(&case)
-        .with_context(|| format!("reading {}", case.display()))?;
+    let text =
+        std::fs::read_to_string(&case).with_context(|| format!("reading {}", case.display()))?;
     let testcase = Testcase::from_json(&text).context("parsing testcase")?;
     let firmware = load_firmware(&firmware)?;
 
@@ -190,8 +188,8 @@ fn replay(case: PathBuf, firmware: PathBuf) -> Result<()> {
 }
 
 fn inspect(model: PathBuf) -> Result<()> {
-    let text = std::fs::read_to_string(&model)
-        .with_context(|| format!("reading {}", model.display()))?;
+    let text =
+        std::fs::read_to_string(&model).with_context(|| format!("reading {}", model.display()))?;
     let model = HardwareModel::from_json(&text).context("parsing model")?;
     print!("{}", model.report());
     Ok(())

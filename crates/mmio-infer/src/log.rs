@@ -23,7 +23,8 @@ pub const SYSTEM_END: u32 = 0xE010_0000;
 /// treat additional ranges as MMIO if a vendor strays.
 #[inline]
 pub const fn is_mmio_address(addr: u32) -> bool {
-    (addr >= PERIPHERAL_START && addr < PERIPHERAL_END) || (addr >= SYSTEM_START && addr < SYSTEM_END)
+    (addr >= PERIPHERAL_START && addr < PERIPHERAL_END)
+        || (addr >= SYSTEM_START && addr < SYSTEM_END)
 }
 
 /// An append-only journal of bus accesses.

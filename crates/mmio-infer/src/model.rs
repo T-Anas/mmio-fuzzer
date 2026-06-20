@@ -148,7 +148,10 @@ mod tests {
         let json = model.to_json_pretty();
         let back = HardwareModel::from_json(&json).unwrap();
         assert_eq!(back.register_count(), 1);
-        assert_eq!(back.register(0x4000_0000).unwrap().constant_read, Some(0x1234));
+        assert_eq!(
+            back.register(0x4000_0000).unwrap().constant_read,
+            Some(0x1234)
+        );
     }
 
     #[test]

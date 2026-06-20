@@ -48,7 +48,12 @@ impl Input {
 
 impl std::fmt::Debug for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Input({} bytes, {})", self.bytes.len(), self.short_hash())
+        write!(
+            f,
+            "Input({} bytes, {})",
+            self.bytes.len(),
+            self.short_hash()
+        )
     }
 }
 

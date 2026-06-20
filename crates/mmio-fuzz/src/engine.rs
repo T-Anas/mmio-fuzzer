@@ -262,7 +262,10 @@ impl Engine {
         }
         candidates.dedup();
 
-        for candidate in candidates.into_iter().take(self.config.max_discovery_candidates) {
+        for candidate in candidates
+            .into_iter()
+            .take(self.config.max_discovery_candidates)
+        {
             let mut trial = overrides.clone();
             trial.insert(addr, candidate);
             let run = self.execute(&Input::new(), model, &trial);

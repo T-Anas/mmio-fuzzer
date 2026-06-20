@@ -227,11 +227,11 @@ fn sign_extend(value: u32, bits: u32) -> i32 {
 /// Decodes a single 16-bit Thumb instruction.
 pub fn decode16(hw: u16) -> Inst {
     let b = |n: u32| ((hw as u32 >> n) & 1) as u8;
-    let f = |hi: u32, lo: u32| ((hw as u32 >> lo) & ((1 << (hi - lo + 1)) - 1)) as u32;
+    let f = |hi: u32, lo: u32| (hw as u32 >> lo) & ((1 << (hi - lo + 1)) - 1);
 
     match hw >> 11 {
         // --- Shift (immediate) -------------------------------------------------
-        0b00000 | 0b00001 | 0b00010 => {
+        0b00000..=0b00010 => {
             let kind = match hw >> 11 {
                 0b00000 => ShiftKind::Lsl,
                 0b00001 => ShiftKind::Lsr,
@@ -317,7 +317,7 @@ pub fn decode16(hw: u16) -> Inst {
                 }
             } else {
                 match f(9, 8) {
-                    0b0000 | 0b0001 | 0b0010 => Inst::High {
+                    0b0000..=0b0010 => Inst::High {
                         op: match f(9, 8) {
                             0b0000 => HighOp::Add,
                             0b0001 => HighOp::Cmp,
@@ -380,7 +380,7 @@ pub fn decode16(hw: u16) -> Inst {
         0b10001 => str_or_ldr(true, MemSize::Half, hw),
 
         // --- SP-relative load/store --------------------------------------------
-        0b10010 | 0b10011 => Inst::LoadStore {
+        0b10010..=0b10011 => Inst::LoadStore {
             load: b(11) != 0,
             size: MemSize::Word,
             signed: false,
@@ -390,7 +390,7 @@ pub fn decode16(hw: u16) -> Inst {
         },
 
         // --- ADR / ADD to SP ---------------------------------------------------
-        0b10100 | 0b10101 => Inst::Adr {
+        0b10100..=0b10101 => Inst::Adr {
             rd: f(10, 8) as u8,
             from_sp: b(11) != 0,
             imm: f(7, 0) * 4,
@@ -400,18 +400,16 @@ pub fn decode16(hw: u16) -> Inst {
         0b10110 | 0b10111 => decode_misc(hw),
 
         // --- Multiple load/store -----------------------------------------------
-        0b11000 | 0b11001 => Inst::LoadStoreMulti {
+        0b11000..=0b11001 => Inst::LoadStoreMulti {
             load: b(11) != 0,
             rn: f(10, 8) as u8,
             regs: f(7, 0) as u16,
         },
 
         // --- Conditional branch / SVC ------------------------------------------
-        0b11010 | 0b11011 => {
+        0b11010..=0b11011 => {
             if f(11, 8) == 0b1111 {
-                Inst::Svc {
-                    imm: f(7, 0) as u8,
-                }
+                Inst::Svc { imm: f(7, 0) as u8 }
             } else {
                 Inst::Branch {
                     cond: f(11, 8) as u8,
@@ -432,7 +430,7 @@ pub fn decode16(hw: u16) -> Inst {
 
 /// Shared decoder for the four immediate load/store shapes.
 fn str_or_ldr(load: bool, size: MemSize, hw: u16) -> Inst {
-    let f = |hi: u32, lo: u32| ((hw as u32 >> lo) & ((1 << (hi - lo + 1)) - 1)) as u32;
+    let f = |hi: u32, lo: u32| (hw as u32 >> lo) & ((1 << (hi - lo + 1)) - 1);
     let scale = match size {
         MemSize::Byte => 1,
         MemSize::Half => 2,
@@ -451,10 +449,10 @@ fn str_or_ldr(load: bool, size: MemSize, hw: u16) -> Inst {
 /// Decodes the miscellaneous 16-bit group (`1011 xxxx`).
 fn decode_misc(hw: u16) -> Inst {
     let b = |n: u32| ((hw as u32 >> n) & 1) as u8;
-    let f = |hi: u32, lo: u32| ((hw as u32 >> lo) & ((1 << (hi - lo + 1)) - 1)) as u32;
+    let f = |hi: u32, lo: u32| (hw as u32 >> lo) & ((1 << (hi - lo + 1)) - 1);
     match f(11, 8) {
         // ADD/SUB SP, #imm7: bit 7 selects.
-        0b0000 | 0b0001 => {
+        0b0000..=0b0001 => {
             if b(7) == 0 {
                 Inst::AddSp {
                     imm: f(6, 0) as i32 * 4,
@@ -465,7 +463,7 @@ fn decode_misc(hw: u16) -> Inst {
                 }
             }
         }
-        0b0100 | 0b0101 => Inst::Push {
+        0b0100..=0b0101 => Inst::Push {
             regs: f(7, 0) as u16,
             lr: b(8) != 0,
         },
@@ -486,20 +484,16 @@ fn decode_misc(hw: u16) -> Inst {
         // SETEND (bit4=0) or CPS (bit4=1). We only model the CPS forms.
         0b0110 => {
             if b(4) != 0 {
-                Inst::Cps {
-                    disable: b(5) != 0,
-                }
+                Inst::Cps { disable: b(5) != 0 }
             } else {
                 Inst::Unsupported(hw as u32)
             }
         }
-        0b1100 | 0b1101 => Inst::Pop {
+        0b1100..=0b1101 => Inst::Pop {
             regs: f(7, 0) as u16,
             pc: b(8) != 0,
         },
-        0b1110 => Inst::Bkpt {
-            imm: f(7, 0) as u8,
-        },
+        0b1110 => Inst::Bkpt { imm: f(7, 0) as u8 },
         0b1111 => Inst::Nop,
         _ => Inst::Unsupported(hw as u32),
     }
@@ -512,8 +506,8 @@ fn decode_misc(hw: u16) -> Inst {
 /// uncovered encoding instead of silently doing the wrong thing.
 pub fn decode32(hw1: u16, hw2: u16) -> Inst {
     let b1 = |n: u32| ((hw1 as u32 >> n) & 1) as u8;
-    let f1 = |hi: u32, lo: u32| ((hw1 as u32 >> lo) & ((1 << (hi - lo + 1)) - 1)) as u32;
-    let f2 = |hi: u32, lo: u32| ((hw2 as u32 >> lo) & ((1 << (hi - lo + 1)) - 1)) as u32;
+    let f1 = |hi: u32, lo: u32| (hw1 as u32 >> lo) & ((1 << (hi - lo + 1)) - 1);
+    let f2 = |hi: u32, lo: u32| (hw2 as u32 >> lo) & ((1 << (hi - lo + 1)) - 1);
 
     // Branch with link: 11110 S imm10 ; 11 J1 1 J2 imm11
     if (hw1 & 0xF800) == 0xF000 && (hw2 & 0xC000) == 0xC000 {
@@ -625,13 +619,7 @@ mod tests {
     #[test]
     fn decodes_mov_immediate() {
         // MOVS r0, #0x42 => 00100 000 01000010 = 0x2042
-        assert_eq!(
-            decode16(0x2042),
-            Inst::MovImm8 {
-                rd: 0,
-                imm: 0x42
-            }
-        );
+        assert_eq!(decode16(0x2042), Inst::MovImm8 { rd: 0, imm: 0x42 });
     }
 
     #[test]
@@ -668,13 +656,7 @@ mod tests {
     #[test]
     fn decodes_pop_pc() {
         // POP {pc} = 0xBD00
-        assert_eq!(
-            decode16(0xBD00),
-            Inst::Pop {
-                regs: 0,
-                pc: true
-            }
-        );
+        assert_eq!(decode16(0xBD00), Inst::Pop { regs: 0, pc: true });
     }
 
     #[test]

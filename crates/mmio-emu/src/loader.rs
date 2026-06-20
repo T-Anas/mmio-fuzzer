@@ -66,7 +66,10 @@ impl Image {
             });
         }
         segments.sort_by_key(|s| s.addr);
-        Ok(Self { entry: entry as u32, segments })
+        Ok(Self {
+            entry: entry as u32,
+            segments,
+        })
     }
 
     /// Wraps a raw binary blob placed at `base`.

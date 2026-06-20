@@ -173,10 +173,9 @@ impl<B: Bus> CortexM<B> {
                 if load {
                     for i in 0..8u32 {
                         if regs & (1 << i) != 0 {
-                            let value = self.bus.read(
-                                PhysAddr::new(base.wrapping_add(i * 4)),
-                                AccessWidth::Word,
-                            )?;
+                            let value = self
+                                .bus
+                                .read(PhysAddr::new(base.wrapping_add(i * 4)), AccessWidth::Word)?;
                             self.cpu.write_reg(i as usize, value);
                         }
                     }
@@ -217,13 +216,15 @@ impl<B: Bus> CortexM<B> {
                 for i in 0..8u32 {
                     if regs & (1 << i) != 0 {
                         let value = self.cpu.read_reg(i as usize);
-                        self.bus.write(PhysAddr::new(sp), AccessWidth::Word, value)?;
+                        self.bus
+                            .write(PhysAddr::new(sp), AccessWidth::Word, value)?;
                         sp = sp.wrapping_add(4);
                     }
                 }
                 if lr {
                     let value = self.cpu.r[LR];
-                    self.bus.write(PhysAddr::new(sp), AccessWidth::Word, value)?;
+                    self.bus
+                        .write(PhysAddr::new(sp), AccessWidth::Word, value)?;
                 }
             }
 
@@ -422,16 +423,13 @@ impl<B: Bus> CortexM<B> {
 
     fn read_special(&self, sysm: u8) -> u32 {
         match sysm {
-            0 | 1 | 2 | 3 => self.cpu.xpsr.bits(),
+            0..=3 => self.cpu.xpsr.bits(),
             5 => self.cpu.xpsr.exception_number() as u32,
             6 => self.cpu.xpsr.bits() & (1 << 24),
             8 => self.cpu.msp,
             9 => self.cpu.psp,
             16 => self.cpu.primask as u32,
-            20 => {
-                (self.cpu.npriv as u32) << 0
-                    | (self.cpu.spsel as u32) << 1
-            }
+            20 => (self.cpu.npriv as u32) | ((self.cpu.spsel as u32) << 1),
             _ => 0,
         }
     }
@@ -464,9 +462,11 @@ impl<B: Bus> CortexM<B> {
             self.cpu.xpsr.bits(),
         ];
         for (i, value) in frame.iter().enumerate() {
-            let _ = self
-                .bus
-                .write(PhysAddr::new(frame_sp + 4 * i as u32), AccessWidth::Word, *value);
+            let _ = self.bus.write(
+                PhysAddr::new(frame_sp + 4 * i as u32),
+                AccessWidth::Word,
+                *value,
+            );
         }
         self.cpu.spsel = false;
         self.cpu.set_sp(frame_sp);

@@ -25,7 +25,10 @@ fn finds_seeded_bug_and_infers_ready_bit() {
     eprintln!("statistics: {stats:?}");
     eprintln!("{}", engine.model().report());
     for finding in engine.findings() {
-        eprintln!("finding: {:?} at {:#010x}", finding.finding.kind, finding.finding.pc);
+        eprintln!(
+            "finding: {:?} at {:#010x}",
+            finding.finding.kind, finding.finding.pc
+        );
     }
 
     // The firmware polls UART_STATUS at 0x4000_0004 until bit 0 reads set.
@@ -33,7 +36,10 @@ fn finds_seeded_bug_and_infers_ready_bit() {
         .model()
         .register(0x4000_0004)
         .expect("status register should have been inferred");
-    assert!(status.polled, "status register should be detected as polled");
+    assert!(
+        status.polled,
+        "status register should be detected as polled"
+    );
     assert_eq!(
         status.ready_value,
         Some(1),

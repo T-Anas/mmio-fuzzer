@@ -22,6 +22,9 @@ pub enum CoreError {
     #[error("execution limit reached after {0} instructions")]
     StepLimit(u64),
 
+    #[error("bus error: {0}")]
+    Bus(String),
+
     #[error("backend does not provide {0}")]
     Unsupported(&'static str),
 }
@@ -32,7 +35,9 @@ impl CoreError {
     pub fn is_target_fault(&self) -> bool {
         matches!(
             self,
-            CoreError::Unmapped { .. } | CoreError::Misaligned { .. } | CoreError::InvalidOpcode { .. }
+            CoreError::Unmapped { .. }
+                | CoreError::Misaligned { .. }
+                | CoreError::InvalidOpcode { .. }
         )
     }
 }
