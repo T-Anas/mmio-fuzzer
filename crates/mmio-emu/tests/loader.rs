@@ -41,7 +41,8 @@ fn applies_image_to_memory() {
     image.apply(&mut mem).unwrap();
 
     assert_eq!(
-        mem.read(PhysAddr::new(0x0800_0000), AccessWidth::Word).unwrap(),
+        mem.read(PhysAddr::new(0x0800_0000), AccessWidth::Word)
+            .unwrap(),
         0x2000_1000
     );
 }

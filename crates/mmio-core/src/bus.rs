@@ -11,6 +11,12 @@ pub trait Bus {
     fn read(&mut self, addr: PhysAddr, width: AccessWidth) -> Result<u32>;
     fn write(&mut self, addr: PhysAddr, width: AccessWidth, value: u32) -> Result<()>;
 
+    /// Informs the bus of the instruction currently executing.
+    ///
+    /// Buses that timestamp accesses with a PC override this; the default is a
+    /// no-op so simple implementations stay simple.
+    fn set_current_pc(&mut self, _pc: u32) {}
+
     /// Convenience helpers used by the core and by tests.
     fn read_word(&mut self, addr: PhysAddr) -> Result<u32> {
         self.read(addr, AccessWidth::Word)

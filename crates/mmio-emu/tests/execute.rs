@@ -101,7 +101,10 @@ fn runs_assembled_arithmetic_and_mmio() {
     }
 
     assert_eq!(core.cpu.r[0], 12, "r0 should hold 5 + 7");
-    assert_eq!(core.cpu.r[3], 12, "r3 should echo the value written to MMIO");
+    assert_eq!(
+        core.cpu.r[3], 12,
+        "r3 should echo the value written to MMIO"
+    );
 
     let accesses = seen.borrow();
     let mmio: Vec<_> = accesses

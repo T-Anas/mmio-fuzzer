@@ -155,10 +155,7 @@ impl RegisterModel {
         };
         format!(
             "{:#010x}  {style}  {} r/{} w  width={}{suffix}",
-            self.addr,
-            self.reads,
-            self.writes,
-            self.width
+            self.addr, self.reads, self.writes, self.width
         )
     }
 }

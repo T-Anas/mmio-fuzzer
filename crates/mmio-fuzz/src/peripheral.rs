@@ -63,8 +63,8 @@ impl PeripheralModel {
         hasher.update(&counter.to_le_bytes());
         hasher.update(&self.input.bytes);
         let digest = hasher.finalize();
-        let index =
-            (u16::from_le_bytes([digest.as_bytes()[0], digest.as_bytes()[1]]) as usize) % values.len();
+        let index = (u16::from_le_bytes([digest.as_bytes()[0], digest.as_bytes()[1]]) as usize)
+            % values.len();
         values[index]
     }
 }
@@ -143,7 +143,9 @@ mod tests {
         reg.constant_read = Some(0xabcd);
         reg.width = AccessWidth::Word;
         let mut handler = PeripheralModel::new(model_with(reg), Input::new());
-        let value = handler.read(PhysAddr::new(0x4000_0000), AccessWidth::Word).unwrap();
+        let value = handler
+            .read(PhysAddr::new(0x4000_0000), AccessWidth::Word)
+            .unwrap();
         assert_eq!(value, 0xabcd);
     }
 
@@ -154,7 +156,9 @@ mod tests {
         overrides.insert(0x4000_0000u32, 0x55u32);
         handler = handler.with_overrides(overrides);
         assert_eq!(
-            handler.read(PhysAddr::new(0x4000_0000), AccessWidth::Word).unwrap(),
+            handler
+                .read(PhysAddr::new(0x4000_0000), AccessWidth::Word)
+                .unwrap(),
             0x55
         );
     }
@@ -168,8 +172,12 @@ mod tests {
         reg.ready_value = Some(0x1);
         reg.width = AccessWidth::Word;
         let mut handler = PeripheralModel::new(model_with(reg), Input::new());
-        let first = handler.read(PhysAddr::new(0x4000_0000), AccessWidth::Word).unwrap();
-        let second = handler.read(PhysAddr::new(0x4000_0000), AccessWidth::Word).unwrap();
+        let first = handler
+            .read(PhysAddr::new(0x4000_0000), AccessWidth::Word)
+            .unwrap();
+        let second = handler
+            .read(PhysAddr::new(0x4000_0000), AccessWidth::Word)
+            .unwrap();
         assert_eq!(first, 0x1);
         assert_eq!(second, 0);
     }
@@ -180,7 +188,9 @@ mod tests {
         handler = handler.with_fallback(0xdead_beef);
         handler.use_model = false;
         assert_eq!(
-            handler.read(PhysAddr::new(0x4000_0000), AccessWidth::Byte).unwrap(),
+            handler
+                .read(PhysAddr::new(0x4000_0000), AccessWidth::Byte)
+                .unwrap(),
             0xef
         );
     }
