@@ -10,21 +10,21 @@
 //! 2. **Fuzzing.** Mutate inputs that bias peripheral responses and keep any
 //!    input that reaches new coverage or triggers an anomaly.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use mmio_core::{Access, CoreError, FnObserver};
+use mmio_core::{Access, CoreError, FnObserver, PhysAddr};
 use mmio_emu::{CortexM, Cpu};
 use mmio_infer::{infer, AccessLog, HardwareModel, InferConfig, RegisterModel};
 
 use crate::anomaly::{Anomaly, AnomalyKind};
 use crate::coverage::Coverage;
 use crate::input::Input;
-use crate::machine::{self, Firmware};
+use crate::machine::{self, Firmware, MemoryLayout};
 use crate::mutate::Mutator;
-use crate::peripheral::PeripheralModel;
+use crate::peripheral::{ExitCell, PeripheralModel};
 use crate::testcase::Testcase;
 
 /// Engine tuning.
@@ -47,6 +47,12 @@ pub struct EngineConfig {
     /// Treat a run as hung once this many instructions pass without new
     /// coverage. This detects tight loops long before the step budget.
     pub no_edge_limit: u64,
+    /// Memory layout: explicit stack/heap/input buffers and guard holes.
+    pub layout: MemoryLayout,
+    /// Base address of a UART-like device that streams the fuzz input.
+    pub stream_uart: Option<u32>,
+    /// Address of a halt register: writing it ends a run cleanly.
+    pub halt_addr: Option<u32>,
 }
 
 impl Default for EngineConfig {
@@ -60,6 +66,9 @@ impl Default for EngineConfig {
             fallback: 0,
             max_findings: 64,
             no_edge_limit: 8_192,
+            layout: MemoryLayout::default(),
+            stream_uart: None,
+            halt_addr: None,
         }
     }
 }
@@ -72,6 +81,8 @@ pub struct Statistics {
     pub corpus: usize,
     pub findings: usize,
     pub discovered_registers: usize,
+    /// Runs that ended by writing the halt register.
+    pub clean_exits: u64,
     pub elapsed: Duration,
 }
 
@@ -86,6 +97,7 @@ pub struct Engine {
     findings: Vec<Testcase>,
     mutator: Mutator,
     executions: u64,
+    clean_exits: u64,
 }
 
 struct RunResult {
@@ -94,6 +106,8 @@ struct RunResult {
     coverage: Coverage,
     log: AccessLog,
     anomaly: Option<Anomaly>,
+    /// Exit code written to the halt register, if the harness finished.
+    exit: Option<u32>,
 }
 
 impl Engine {
@@ -109,7 +123,13 @@ impl Engine {
             findings: Vec::new(),
             mutator,
             executions: 0,
+            clean_exits: 0,
         }
+    }
+
+    /// Adds a starting input to the corpus (e.g. a valid seed packet).
+    pub fn seed_corpus(&mut self, input: Input) {
+        self.corpus.push(input);
     }
 
     pub fn model(&self) -> &HardwareModel {
@@ -126,6 +146,12 @@ impl Engine {
     /// confirm a testcase reproduces.
     pub fn check(&self, input: &Input) -> Option<Anomaly> {
         self.execute(input, &self.model, &self.overrides).anomaly
+    }
+
+    /// Runs one input and returns both any anomaly and the halt exit code.
+    pub fn check_outcome(&self, input: &Input) -> (Option<Anomaly>, Option<u32>) {
+        let result = self.execute(input, &self.model, &self.overrides);
+        (result.anomaly, result.exit)
     }
 
     pub fn findings(&self) -> &[Testcase] {
@@ -149,6 +175,7 @@ impl Engine {
             corpus: self.corpus.len(),
             findings: self.findings.len(),
             discovered_registers: self.model.register_count(),
+            clean_exits: self.clean_exits,
             elapsed: start.elapsed(),
         }
     }
@@ -160,6 +187,9 @@ impl Engine {
         }
         let result = self.execute(&input, &self.model, &self.overrides);
         self.executions += 1;
+        if result.exit.is_some() {
+            self.clean_exits += 1;
+        }
 
         if self.coverage.count_new(&result.coverage) > 0 {
             self.coverage.merge(&result.coverage);
@@ -284,10 +314,26 @@ impl Engine {
         model: &HardwareModel,
         overrides: &HashMap<u32, u32>,
     ) -> RunResult {
-        let mut memory = machine::build_memory(&self.firmware);
-        let handler = PeripheralModel::new(model.clone(), input.clone())
+        let mut memory = machine::build_memory(&self.firmware, &self.config.layout);
+
+        // Materialise the fuzz input into its memory region, if any.
+        if let Some((base, size)) = self.config.layout.input {
+            let n = input.bytes.len().min(size as usize);
+            if n > 0 {
+                let _ = memory.load_image(PhysAddr::new(base), &input.bytes[..n]);
+            }
+        }
+
+        let exit: ExitCell = Rc::new(Cell::new(None));
+        let mut handler = PeripheralModel::new(model.clone(), input.clone())
             .with_overrides(overrides.clone())
             .with_fallback(self.config.fallback);
+        if let Some(base) = self.config.stream_uart {
+            handler = handler.with_stream(base, input.bytes.clone());
+        }
+        if let Some(addr) = self.config.halt_addr {
+            handler = handler.with_halt(addr, exit.clone());
+        }
         memory.set_mmio_handler(handler);
 
         let log = Rc::new(RefCell::new(AccessLog::new()));
@@ -299,7 +345,8 @@ impl Engine {
         let mut core = CortexM::new(Cpu::new(), memory);
         let mut coverage = Coverage::new();
         let mut steps = 0u64;
-        let anomaly: Option<Anomaly>;
+        let mut anomaly: Option<Anomaly> = None;
+        let mut exit_code: Option<u32> = None;
 
         if let Err(error) = core.reset() {
             anomaly = Some(Anomaly::new(
@@ -323,6 +370,10 @@ impl Engine {
                 match core.step() {
                     Ok(()) => {
                         steps += 1;
+                        if let Some(code) = exit.get() {
+                            exit_code = Some(code);
+                            break;
+                        }
                         if core.cpu.xpsr.exception_number() == 3 {
                             anomaly = Some(Anomaly::new(
                                 AnomalyKind::HardFault,
@@ -352,7 +403,7 @@ impl Engine {
                         }
                     }
                     Err(error) => {
-                        anomaly = Some(anomaly_from_error(error, pc, steps));
+                        anomaly = Some(self.classify_error(error, pc, steps));
                         break;
                     }
                 }
@@ -372,6 +423,23 @@ impl Engine {
             coverage,
             log,
             anomaly,
+            exit: exit_code,
+        }
+    }
+
+    /// Classifies an execution error, distinguishing a guard hole from a
+    /// generic unmapped address.
+    fn classify_error(&self, error: CoreError, pc: u32, steps: u64) -> Anomaly {
+        match error {
+            CoreError::Unmapped { addr, .. } if self.config.layout.is_guard(addr.raw()) => {
+                Anomaly::new(
+                    AnomalyKind::GuardHit,
+                    pc,
+                    steps,
+                    format!("guard hit at {addr}"),
+                )
+            }
+            other => anomaly_from_error(other, pc, steps),
         }
     }
 }

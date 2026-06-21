@@ -19,6 +19,6 @@ pub use anomaly::{Anomaly, AnomalyKind};
 pub use coverage::Coverage;
 pub use engine::{Engine, EngineConfig, Statistics};
 pub use input::Input;
-pub use machine::{build_core, build_memory, Firmware, MachineError};
-pub use peripheral::PeripheralModel;
+pub use machine::{build_core, build_memory, Firmware, MachineError, MemoryLayout};
+pub use peripheral::{ExitCell, PeripheralModel};
 pub use testcase::Testcase;
