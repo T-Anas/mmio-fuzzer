@@ -64,6 +64,14 @@ pub enum ExtendKind {
     Uxtb,
 }
 
+/// Byte-reversal variants (`REV`, `REV16`, `REVSH`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RevKind {
+    Rev,
+    Rev16,
+    Revsh,
+}
+
 /// Transfer width for load/store instructions.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MemSize {
@@ -148,6 +156,11 @@ pub enum Inst {
     },
     Extend {
         kind: ExtendKind,
+        rd: u8,
+        rm: u8,
+    },
+    Rev {
+        kind: RevKind,
         rd: u8,
         rm: u8,
     },
@@ -493,6 +506,20 @@ fn decode_misc(hw: u16) -> Inst {
             regs: f(7, 0) as u16,
             pc: b(8) != 0,
         },
+        // Byte reversal: 1011 1010 op Rm Rd.
+        0b1010 => {
+            let kind = match f(7, 6) {
+                0b00 => RevKind::Rev,
+                0b01 => RevKind::Rev16,
+                0b11 => RevKind::Revsh,
+                _ => return Inst::Unsupported(hw as u32),
+            };
+            Inst::Rev {
+                kind,
+                rm: f(5, 3) as u8,
+                rd: f(2, 0) as u8,
+            }
+        }
         0b1110 => Inst::Bkpt { imm: f(7, 0) as u8 },
         0b1111 => Inst::Nop,
         _ => Inst::Unsupported(hw as u32),
@@ -703,6 +730,34 @@ mod tests {
     fn decodes_sub_sp() {
         // SUB SP, #0x10 = 0xB084
         assert_eq!(decode16(0xB084), Inst::SubSp { imm: 0x10 });
+    }
+
+    #[test]
+    fn decodes_rev_family() {
+        assert_eq!(
+            decode16(0xBA08),
+            Inst::Rev {
+                kind: RevKind::Rev,
+                rd: 0,
+                rm: 1
+            }
+        );
+        assert_eq!(
+            decode16(0xBA48),
+            Inst::Rev {
+                kind: RevKind::Rev16,
+                rd: 0,
+                rm: 1
+            }
+        );
+        assert_eq!(
+            decode16(0xBAC8),
+            Inst::Rev {
+                kind: RevKind::Revsh,
+                rd: 0,
+                rm: 1
+            }
+        );
     }
 
     #[test]
