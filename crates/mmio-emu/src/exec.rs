@@ -125,6 +125,20 @@ impl<B: Bus> CortexM<B> {
                 self.cpu.write_reg(rd as usize, extended);
             }
 
+            Inst::Rev { kind, rd, rm } => {
+                let value = self.reg(rm);
+                let reversed = match kind {
+                    crate::decode::RevKind::Rev => value.swap_bytes(),
+                    crate::decode::RevKind::Rev16 => {
+                        (value as u16).swap_bytes() as u32 | ((value >> 16) as u16).swap_bytes() as u32
+                    }
+                    crate::decode::RevKind::Revsh => {
+                        (value as u16).swap_bytes() as i16 as i32 as u32
+                    }
+                };
+                self.cpu.write_reg(rd as usize, reversed);
+            }
+
             Inst::Bx { rm, link } => {
                 let target = self.reg(rm);
                 if link {
