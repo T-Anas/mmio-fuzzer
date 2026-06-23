@@ -22,3 +22,6 @@
 
 # Local toolchain overrides
 .env
+
+# Generated target objects
+/targets/build/

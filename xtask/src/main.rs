@@ -1,8 +1,9 @@
 //! Repository automation.
 //!
-//! `cargo xtask build-fixtures` compiles the firmware fixtures with the ARM
-//! bare-metal toolchain. The prebuilt ELFs are committed so the test suite can
-//! run without the cross compiler, but this keeps them reproducible.
+//! `cargo xtask build-fixtures` compiles the firmware fixtures and the
+//! vendored fuzzing targets with the ARM bare-metal toolchain. The prebuilt
+//! ELFs are committed so the test suite can run without the cross compiler,
+//! but this keeps them reproducible.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -13,8 +14,13 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("build-fixtures") => build_fixtures(),
+        Some("build-targets") => build_targets(),
+        Some("build-all") => {
+            build_fixtures()?;
+            build_targets()
+        }
         Some("help") | None => {
-            println!("usage: cargo xtask build-fixtures");
+            println!("usage: cargo xtask <build-fixtures|build-targets|build-all>");
             Ok(())
         }
         Some(other) => bail!("unknown xtask `{other}`"),
@@ -87,6 +93,82 @@ fn compile(cc: &str, common: &[&str], source: &Path, output: &Path) -> Result<()
     let mut cmd = Command::new(cc);
     cmd.args(common).arg("-c").arg(source).arg("-o").arg(output);
     run(cmd)
+}
+
+/// Builds the vendored fuzzing targets (currently MQTT-C).
+fn build_targets() -> Result<()> {
+    let root = repo_root()?;
+    let target = root.join("targets").join("mqtt-c");
+    let build = root.join("targets").join("build");
+    let prebuilt = root.join("targets").join("prebuilt");
+    std::fs::create_dir_all(&build)?;
+    std::fs::create_dir_all(&prebuilt)?;
+
+    let cc = std::env::var("ARM_GCC").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
+    let common: [&str; 13] = [
+        "-mcpu=cortex-m0",
+        "-mthumb",
+        "-ffreestanding",
+        "-nostdlib",
+        "-nostartfiles",
+        "-Os",
+        "-Wall",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-I",
+        "include",
+        "-I",
+        "harness",
+    ];
+    let pal = "-DMQTTC_PAL_FILE=mqtt_pal_min.h";
+
+    // The upstream source lives in targets/mqtt-c; compile from there so the
+    // relative include paths resolve.
+    let mqtt_obj = build.join("mqtt.o");
+    let mut cmd = Command::new(&cc);
+    cmd.current_dir(&target)
+        .args(common)
+        .arg(pal)
+        .arg("-c")
+        .arg("src/mqtt.c")
+        .arg("-o")
+        .arg(&mqtt_obj);
+    run(cmd)?;
+
+    let compile_harness = |src: &str, out: &str| -> Result<PathBuf> {
+        let output = build.join(out);
+        let mut cmd = Command::new(&cc);
+        cmd.current_dir(&target)
+            .args(common)
+            .arg(pal)
+            .arg("-c")
+            .arg(src)
+            .arg("-o")
+            .arg(&output);
+        run(cmd)?;
+        Ok(output)
+    };
+
+    let main_obj = compile_harness("harness/main.c", "mqtt_main.o")?;
+    let compat_obj = compile_harness("harness/compat.c", "mqtt_compat.o")?;
+    let startup_obj = compile_harness("harness/startup.s", "mqtt_startup.o")?;
+
+    let elf = prebuilt.join("mqtt_publish.elf");
+    let mut cmd = Command::new(&cc);
+    cmd.args(["-mcpu=cortex-m0", "-mthumb", "-nostdlib", "-nostartfiles"])
+        .arg("-Wl,--gc-sections")
+        .arg("-T")
+        .arg("harness/link.ld")
+        .arg(&startup_obj)
+        .arg(&main_obj)
+        .arg(&compat_obj)
+        .arg(&mqtt_obj)
+        .arg("-o")
+        .arg(&elf)
+        .current_dir(&target);
+    run(cmd)?;
+    println!("built {}", elf.display());
+    Ok(())
 }
 
 fn run(mut cmd: Command) -> Result<()> {
