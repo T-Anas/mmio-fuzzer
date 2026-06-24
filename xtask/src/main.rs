@@ -168,6 +168,46 @@ fn build_targets() -> Result<()> {
         .current_dir(&target);
     run(cmd)?;
     println!("built {}", elf.display());
+
+    // Negative control: the same image, but with the CVE-2026-54412 bounds
+    // check added to the publish deserialiser. Used to prove that a finding is
+    // caused by the missing check and not by an artefact of our harness.
+    let source = std::fs::read_to_string(target.join("src/mqtt.c"))?;
+    let needle = "response->topic_name_size = __mqtt_unpack_uint16(buf);";
+    let guard = format!(
+        "{needle}\n    if (response->topic_name_size > mqtt_response->fixed_header.remaining_length - 2) {{\n        return MQTT_ERROR_MALFORMED_RESPONSE;\n    }}"
+    );
+    if !source.contains(needle) {
+        bail!("cannot locate the publish length parse in mqtt.c; upstream changed?");
+    }
+    std::fs::write(build.join("mqtt_fixed.c"), source.replacen(needle, &guard, 1))?;
+
+    let fixed_obj = build.join("mqtt_fixed.o");
+    let mut cmd = Command::new(&cc);
+    cmd.current_dir(&target)
+        .args(common)
+        .arg(pal)
+        .arg("-c")
+        .arg("../build/mqtt_fixed.c")
+        .arg("-o")
+        .arg(&fixed_obj);
+    run(cmd)?;
+
+    let fixed_elf = prebuilt.join("mqtt_publish_fixed.elf");
+    let mut cmd = Command::new(&cc);
+    cmd.args(["-mcpu=cortex-m0", "-mthumb", "-nostdlib", "-nostartfiles"])
+        .arg("-Wl,--gc-sections")
+        .arg("-T")
+        .arg("harness/link.ld")
+        .arg(&startup_obj)
+        .arg(&main_obj)
+        .arg(&compat_obj)
+        .arg(&fixed_obj)
+        .arg("-o")
+        .arg(&fixed_elf)
+        .current_dir(&target);
+    run(cmd)?;
+    println!("built {}", fixed_elf.display());
     Ok(())
 }
 
