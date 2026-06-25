@@ -58,9 +58,9 @@ enum Command {
         /// Leave `BASE:SIZE` unmapped, reported as a guard hit (repeatable).
         #[arg(long = "guard")]
         guards: Vec<String>,
-        /// Seed corpus with the bytes of this file.
-        #[arg(long)]
-        seed_file: Option<PathBuf>,
+        /// Seed corpus with the bytes of this file (repeatable).
+        #[arg(long = "seed-file")]
+        seed_files: Vec<PathBuf>,
     },
     /// Profile a firmware and print the inferred register model.
     Infer {
@@ -99,7 +99,7 @@ fn main() -> Result<()> {
             stack,
             heap,
             guards,
-            seed_file,
+            seed_files,
         } => run(
             firmware,
             iterations,
@@ -114,7 +114,7 @@ fn main() -> Result<()> {
                 stack,
                 heap,
                 guards,
-                seed_file,
+                seed_files,
             },
         ),
         Command::Infer { firmware, out } => infer(firmware, out),
@@ -133,7 +133,7 @@ struct LayoutArgs {
     stack: Option<String>,
     heap: Option<String>,
     guards: Vec<String>,
-    seed_file: Option<PathBuf>,
+    seed_files: Vec<PathBuf>,
 }
 
 fn parse_u32(text: &str) -> Result<u32> {
@@ -200,8 +200,8 @@ fn load_firmware(path: &PathBuf) -> Result<Firmware> {
     Firmware::from_file(path).with_context(|| format!("loading firmware {}", path.display()))
 }
 
-fn seed_engine(engine: &mut Engine, seed_file: &Option<PathBuf>) -> Result<()> {
-    if let Some(path) = seed_file {
+fn seed_engine(engine: &mut Engine, seed_files: &[PathBuf]) -> Result<()> {
+    for path in seed_files {
         let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         engine.seed_corpus(Input::from_vec(bytes));
     }
@@ -222,7 +222,7 @@ fn run(
 
     let config = build_config(seed, max_steps, iterations, &args)?;
     let mut engine = Engine::new(firmware, config);
-    seed_engine(&mut engine, &args.seed_file)?;
+    seed_engine(&mut engine, &args.seed_files)?;
     let stats = engine.run();
 
     println!("\n== inferred hardware model ==");
