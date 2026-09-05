@@ -550,9 +550,9 @@ pub fn decode32(hw1: u16, hw2: u16) -> Inst {
         };
     }
 
-    // Barriers and hints: 1111 0011 1011 1111 ; 1000...
+    // Barriers and hints: 1111 0011 1011 1111 ; 1000 1111 010x 1111
     if hw1 == 0xF3BF {
-        return match hw2 & 0xFF00 {
+        return match hw2 & 0xFFF0 {
             0x8F40 => Inst::Barrier(BarrierKind::Dsb),
             0x8F50 => Inst::Barrier(BarrierKind::Dmb),
             0x8F60 => Inst::Barrier(BarrierKind::Isb),

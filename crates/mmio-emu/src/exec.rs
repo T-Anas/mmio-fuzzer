@@ -130,7 +130,8 @@ impl<B: Bus> CortexM<B> {
                 let reversed = match kind {
                     crate::decode::RevKind::Rev => value.swap_bytes(),
                     crate::decode::RevKind::Rev16 => {
-                        (value as u16).swap_bytes() as u32 | ((value >> 16) as u16).swap_bytes() as u32
+                        (value as u16).swap_bytes() as u32
+                            | ((value >> 16) as u16).swap_bytes() as u32
                     }
                     crate::decode::RevKind::Revsh => {
                         (value as u16).swap_bytes() as i16 as i32 as u32
