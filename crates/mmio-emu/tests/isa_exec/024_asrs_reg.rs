@@ -1,0 +1,11 @@
+//! Execution test for `asrs_reg`.
+
+use super::harness::run_with;
+
+#[test]
+fn exec_asrs_reg() {
+    let mut core = run_with(&[0x08, 0x41], |cpu| { cpu.r[0] = 0xffff0000; cpu.r[1] = 0x00000004; }, 1);
+    assert_eq!(core.cpu.r[0], 0xfffff000, "r0");
+    assert_eq!(core.cpu.xpsr.z(), false, "flag z");
+    assert_eq!(core.cpu.xpsr.n(), true, "flag n");
+}
