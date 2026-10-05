@@ -10,10 +10,13 @@ use std::path::Path;
 use mmio_fuzz::{Engine, EngineConfig, Firmware};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/prebuilt/uart_demo.elf");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/prebuilt/uart_demo.elf");
     let firmware = Firmware::from_file(path)?;
-    println!("firmware {} at {:#010x}", firmware.hash_hex(), firmware.entry());
+    println!(
+        "firmware {} at {:#010x}",
+        firmware.hash_hex(),
+        firmware.entry()
+    );
 
     let config = EngineConfig {
         iterations: 2_000,
