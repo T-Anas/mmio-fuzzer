@@ -4,7 +4,7 @@ use super::harness::run_with;
 
 #[test]
 fn exec_tst() {
-    let mut core = run_with(
+    let core = run_with(
         &[0x08, 0x42],
         |cpu| {
             cpu.r[0] = 0x00000000;
@@ -12,6 +12,6 @@ fn exec_tst() {
         },
         1,
     );
-    assert_eq!(core.cpu.xpsr.z(), true, "flag z");
-    assert_eq!(core.cpu.xpsr.n(), false, "flag n");
+    assert!(core.cpu.xpsr.z(), "flag z");
+    assert!(!core.cpu.xpsr.n(), "flag n");
 }

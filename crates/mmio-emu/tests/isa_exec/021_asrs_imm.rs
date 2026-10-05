@@ -4,7 +4,7 @@ use super::harness::run_with;
 
 #[test]
 fn exec_asrs_imm() {
-    let mut core = run_with(
+    let core = run_with(
         &[0x48, 0x10],
         |cpu| {
             cpu.r[1] = 0xfffffffe;
@@ -12,7 +12,7 @@ fn exec_asrs_imm() {
         1,
     );
     assert_eq!(core.cpu.r[0], 0xffffffff, "r0");
-    assert_eq!(core.cpu.xpsr.z(), false, "flag z");
-    assert_eq!(core.cpu.xpsr.n(), true, "flag n");
-    assert_eq!(core.cpu.xpsr.c(), false, "flag c");
+    assert!(!core.cpu.xpsr.z(), "flag z");
+    assert!(core.cpu.xpsr.n(), "flag n");
+    assert!(!core.cpu.xpsr.c(), "flag c");
 }
