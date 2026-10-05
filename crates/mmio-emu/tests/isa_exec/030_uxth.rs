@@ -4,7 +4,7 @@ use super::harness::run_with;
 
 #[test]
 fn exec_uxth() {
-    let mut core = run_with(
+    let core = run_with(
         &[0x88, 0xb2],
         |cpu| {
             cpu.r[1] = 0x12345678;

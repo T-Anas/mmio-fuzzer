@@ -4,7 +4,7 @@ use super::harness::run_with;
 
 #[test]
 fn exec_cmp_reg() {
-    let mut core = run_with(
+    let core = run_with(
         &[0x88, 0x42],
         |cpu| {
             cpu.r[0] = 0x00000004;
@@ -12,7 +12,7 @@ fn exec_cmp_reg() {
         },
         1,
     );
-    assert_eq!(core.cpu.xpsr.z(), false, "flag z");
-    assert_eq!(core.cpu.xpsr.c(), false, "flag c");
-    assert_eq!(core.cpu.xpsr.n(), true, "flag n");
+    assert!(!core.cpu.xpsr.z(), "flag z");
+    assert!(!core.cpu.xpsr.c(), "flag c");
+    assert!(core.cpu.xpsr.n(), "flag n");
 }

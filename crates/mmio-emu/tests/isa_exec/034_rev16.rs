@@ -4,7 +4,7 @@ use super::harness::run_with;
 
 #[test]
 fn exec_rev16() {
-    let mut core = run_with(
+    let core = run_with(
         &[0x48, 0xba],
         |cpu| {
             cpu.r[1] = 0x11223344;
