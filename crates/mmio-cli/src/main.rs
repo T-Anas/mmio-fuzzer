@@ -288,7 +288,13 @@ fn replay(case: PathBuf, firmware: PathBuf) -> Result<()> {
         );
     }
 
-    let mut engine = Engine::new(firmware, EngineConfig::default());
+    let mut config = EngineConfig::default();
+    if let Some(repro) = &testcase.repro {
+        config.layout = repro.layout.clone();
+        config.stream_uart = repro.stream_uart;
+        config.halt_addr = repro.halt_addr;
+    }
+    let mut engine = Engine::new(firmware, config);
     engine.profile();
     let input = Input::from_vec(testcase.input.clone());
     match engine.check(&input) {
