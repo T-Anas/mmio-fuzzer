@@ -9,7 +9,7 @@ use std::fmt;
 use std::path::Path;
 
 use mmio_core::{MemoryMap, MemoryRegion, Permissions, PhysAddr, RegionKind};
-use mmio_emu::{CortexM, Cpu, FlatMemory, Image};
+use mmio_emu::{CortexM, Cpu, FlatMemory, Image, Shadow};
 use serde::{Deserialize, Serialize};
 
 /// Base of the ARMv6-M peripheral window.
@@ -133,6 +133,8 @@ pub struct MemoryLayout {
     pub input: Option<(u32, u32)>,
     /// Ranges deliberately left unmapped, reported as `GuardHit`.
     pub guards: Vec<(u32, u32)>,
+    /// Poisoned ranges inside mapped memory, reported as `OutOfBounds`.
+    pub redzones: Vec<(u32, u32)>,
 }
 
 impl Default for MemoryLayout {
@@ -143,6 +145,7 @@ impl Default for MemoryLayout {
             heap: None,
             input: None,
             guards: Vec::new(),
+            redzones: Vec::new(),
         }
     }
 }
@@ -173,6 +176,11 @@ impl MemoryLayout {
 
     pub fn with_guard(mut self, base: u32, size: u32) -> Self {
         self.guards.push((base, size));
+        self
+    }
+
+    pub fn with_redzone(mut self, base: u32, size: u32) -> Self {
+        self.redzones.push((base, size));
         self
     }
 
@@ -284,6 +292,13 @@ pub fn build_memory(firmware: &Firmware, layout: &MemoryLayout) -> FlatMemory {
     let _ = firmware.image.apply(&mut memory);
     if alias {
         let _ = memory.load_image(PhysAddr::ZERO, &vectors);
+    }
+    if !layout.redzones.is_empty() {
+        let mut shadow = Shadow::new();
+        for (base, size) in &layout.redzones {
+            shadow.poison(*base, *size);
+        }
+        memory.set_shadow(shadow);
     }
     memory
 }
