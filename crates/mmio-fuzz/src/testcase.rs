@@ -4,7 +4,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::anomaly::{Anomaly, AnomalyKind};
 use crate::input::Input;
+use crate::machine::MemoryLayout;
 use mmio_infer::HardwareModel;
+
+/// The machine configuration a finding was produced under.
+///
+/// Testcases must be reproducible, and for parser targets that means more than
+/// the input bytes: the memory layout, streaming device and halt register all
+/// affect behaviour, so they travel with the finding.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ReproConfig {
+    pub layout: MemoryLayout,
+    #[serde(default)]
+    pub stream_uart: Option<u32>,
+    #[serde(default)]
+    pub halt_addr: Option<u32>,
+}
 
 /// Everything needed to replay a finding.
 ///
@@ -18,6 +33,9 @@ pub struct Testcase {
     pub finding: Anomaly,
     pub final_pc: u32,
     pub steps: u64,
+    /// Machine configuration used for the run, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repro: Option<ReproConfig>,
     /// Optional snapshot of the model in force when the finding was made.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub model: Option<HardwareModel>,
@@ -37,8 +55,15 @@ impl Testcase {
             finding,
             final_pc,
             steps,
+            repro: None,
             model: None,
         }
+    }
+
+    /// Attaches the machine configuration used for the run.
+    pub fn with_repro(mut self, repro: ReproConfig) -> Self {
+        self.repro = Some(repro);
+        self
     }
 
     pub fn to_json(&self) -> String {

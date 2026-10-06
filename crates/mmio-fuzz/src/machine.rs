@@ -10,6 +10,7 @@ use std::path::Path;
 
 use mmio_core::{MemoryMap, MemoryRegion, Permissions, PhysAddr, RegionKind};
 use mmio_emu::{CortexM, Cpu, FlatMemory, Image};
+use serde::{Deserialize, Serialize};
 
 /// Base of the ARMv6-M peripheral window.
 pub const PERIPHERAL_BASE: u32 = 0x4000_0000;
@@ -120,7 +121,7 @@ fn vector_bytes(firmware: &Firmware, count: usize) -> Vec<u8> {
 /// layout: exact stack, heap and input buffers with holes between them. Any
 /// access into a hole is unmapped, so an out-of-bounds pointer becomes a
 /// detectable `GuardHit` instead of silently reading neighbouring RAM.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MemoryLayout {
     /// Default RAM window, or `None` to omit it (use the explicit regions).
     pub ram: Option<(u32, u32)>,

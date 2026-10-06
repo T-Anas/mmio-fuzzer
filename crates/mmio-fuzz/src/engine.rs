@@ -211,13 +211,15 @@ impl Engine {
         if duplicate || self.findings.len() >= self.config.max_findings {
             return;
         }
-        self.findings.push(Testcase::new(
-            self.firmware.hash_hex(),
-            input,
-            anomaly,
-            final_pc,
-            steps,
-        ));
+        self.findings.push(
+            Testcase::new(self.firmware.hash_hex(), input, anomaly, final_pc, steps).with_repro(
+                crate::testcase::ReproConfig {
+                    layout: self.config.layout.clone(),
+                    stream_uart: self.config.stream_uart,
+                    halt_addr: self.config.halt_addr,
+                },
+            ),
+        );
     }
 
     fn pick_corpus(&self) -> Input {

@@ -21,4 +21,4 @@ pub use engine::{Engine, EngineConfig, Statistics};
 pub use input::Input;
 pub use machine::{build_core, build_memory, Firmware, MachineError, MemoryLayout};
 pub use peripheral::{ExitCell, PeripheralModel};
-pub use testcase::Testcase;
+pub use testcase::{ReproConfig, Testcase};
