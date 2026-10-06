@@ -26,11 +26,14 @@ struct Stream {
     base: u32,
     pos: usize,
     data: Vec<u8>,
+    /// Width of one chunk read from the data register.
+    width: AccessWidth,
 }
 
 impl Stream {
     const DATA: u32 = 0x00;
     const STATUS: u32 = 0x04;
+    const COUNT: u32 = 0x0c;
     const RX_READY: u32 = 0x1;
     const TX_READY: u32 = 0x2;
     const SPAN: u32 = 0x1000;
@@ -39,14 +42,19 @@ impl Stream {
         addr >= self.base && addr < self.base.wrapping_add(Self::SPAN)
     }
 
-    fn read(&mut self, offset: u32, width: AccessWidth) -> u32 {
+    fn read(&mut self, offset: u32, access: AccessWidth) -> u32 {
         let value = match offset {
             Self::DATA => {
-                let byte = self.data.get(self.pos).copied().unwrap_or(0);
-                if self.pos < self.data.len() {
-                    self.pos += 1;
+                let chunk = self.width.bytes() as usize;
+                let mut value = 0u32;
+                for i in 0..chunk {
+                    let byte = self.data.get(self.pos + i).copied().unwrap_or(0);
+                    value |= (byte as u32) << (8 * i);
                 }
-                byte as u32
+                if self.pos < self.data.len() {
+                    self.pos = (self.pos + chunk).min(self.data.len());
+                }
+                value
             }
             Self::STATUS => {
                 let mut status = Self::TX_READY;
@@ -55,13 +63,14 @@ impl Stream {
                 }
                 status
             }
+            Self::COUNT => (self.data.len() - self.pos) as u32,
             _ => 0,
         };
-        value & width.mask()
+        value & access.mask()
     }
 
     fn write(&mut self, _offset: u32, _value: u32) {
-        // A real UART would transmit; the model has nothing to do.
+        // A real device would transmit; the model has nothing to do.
     }
 }
 
@@ -119,8 +128,20 @@ impl PeripheralModel {
     }
 
     /// Installs a UART-like device that streams `data` to the firmware.
-    pub fn with_stream(mut self, base: u32, data: Vec<u8>) -> Self {
-        self.stream = Some(Stream { base, pos: 0, data });
+    pub fn with_stream(self, base: u32, data: Vec<u8>) -> Self {
+        self.with_stream_width(base, data, AccessWidth::Byte)
+    }
+
+    /// Installs a streaming device whose data register returns `width`-sized
+    /// chunks. Modelling the chunk size matters for peripherals such as CAN
+    /// mailboxes or word-wide FIFOs.
+    pub fn with_stream_width(mut self, base: u32, data: Vec<u8>, width: AccessWidth) -> Self {
+        self.stream = Some(Stream {
+            base,
+            pos: 0,
+            data,
+            width,
+        });
         self
     }
 
@@ -324,5 +345,21 @@ mod tests {
             .write(PhysAddr::new(0x4000_f000), AccessWidth::Word, 7)
             .unwrap();
         assert_eq!(exit.get(), Some(7));
+    }
+
+    #[test]
+    fn chunk_device_width_and_count() {
+        let data = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let mut handler = PeripheralModel::new(HardwareModel::new(), Input::new())
+            .with_stream_width(0x4000_3000, data, AccessWidth::Word);
+        let read = |h: &mut PeripheralModel, off: u32| {
+            h.read(PhysAddr::new(0x4000_3000 + off), AccessWidth::Word)
+                .unwrap()
+        };
+        assert_eq!(read(&mut handler, 0x0c), 8, "count starts at eight");
+        assert_eq!(read(&mut handler, 0x00), 0x0403_0201);
+        assert_eq!(read(&mut handler, 0x0c), 4, "four bytes consumed");
+        assert_eq!(read(&mut handler, 0x00), 0x0807_0605);
+        assert_eq!(read(&mut handler, 0x0c), 0, "drained");
     }
 }
