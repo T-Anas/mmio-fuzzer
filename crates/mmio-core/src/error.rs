@@ -16,6 +16,13 @@ pub enum CoreError {
     #[error("misaligned {width} access at {addr}")]
     Misaligned { addr: PhysAddr, width: AccessWidth },
 
+    #[error("out-of-bounds {kind} {width} access at {addr}")]
+    OutOfBounds {
+        addr: PhysAddr,
+        kind: AccessKind,
+        width: AccessWidth,
+    },
+
     #[error("invalid opcode {opcode:#010x} at pc {pc:#010x}")]
     InvalidOpcode { opcode: u32, pc: u32 },
 
@@ -37,6 +44,7 @@ impl CoreError {
             self,
             CoreError::Unmapped { .. }
                 | CoreError::Misaligned { .. }
+                | CoreError::OutOfBounds { .. }
                 | CoreError::InvalidOpcode { .. }
         )
     }
