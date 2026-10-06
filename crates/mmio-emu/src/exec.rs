@@ -16,6 +16,8 @@ use crate::CortexM;
 pub const EXC_RETURN_THREAD_MSP: u32 = 0xFFFF_FFF9;
 /// EXC_RETURN value meaning "return to thread mode, use PSP".
 pub const EXC_RETURN_THREAD_PSP: u32 = 0xFFFF_FFFD;
+/// High bits shared by every EXC_RETURN value.
+pub const EXC_RETURN_MASK: u32 = 0xFFFF_FFF0;
 
 const XPSR_N: u32 = 1 << 31;
 
@@ -147,7 +149,11 @@ impl<B: Bus> CortexM<B> {
                     let return_addr = self.cpu.pc().wrapping_add(2) | 1;
                     self.cpu.r[LR] = return_addr;
                 }
-                self.cpu.branch(target);
+                if target & EXC_RETURN_MASK == EXC_RETURN_MASK {
+                    self.exception_return(target);
+                } else {
+                    self.cpu.branch(target);
+                }
             }
 
             Inst::Adr { rd, from_sp, imm } => {
@@ -256,6 +262,10 @@ impl<B: Bus> CortexM<B> {
                 if pc {
                     let value = self.bus.read(PhysAddr::new(sp), AccessWidth::Word)?;
                     sp = sp.wrapping_add(4);
+                    if value & EXC_RETURN_MASK == EXC_RETURN_MASK {
+                        self.exception_return(value);
+                        return Ok(());
+                    }
                     self.cpu.branch(value);
                 }
                 self.cpu.set_sp(sp);
@@ -493,6 +503,41 @@ impl<B: Bus> CortexM<B> {
             .read(PhysAddr::new((exc as u32) * 4), AccessWidth::Word)
             .unwrap_or(0);
         self.cpu.branch(vector & !1);
+    }
+
+    /// Handles a return from an exception (`BX LR` / `POP {pc}` with an
+    /// EXC_RETURN value): pops the stacked frame and resumes thread execution.
+    fn exception_return(&mut self, exc_return: u32) {
+        let use_psp = exc_return & (1 << 2) != 0;
+        let sp = if use_psp { self.cpu.psp } else { self.cpu.msp };
+        let word = |cpu_bus: &mut B, offset: u32| {
+            cpu_bus
+                .read(PhysAddr::new(sp.wrapping_add(offset)), AccessWidth::Word)
+                .unwrap_or(0)
+        };
+        let r0 = word(&mut self.bus, 0);
+        let r1 = word(&mut self.bus, 4);
+        let r2 = word(&mut self.bus, 8);
+        let r3 = word(&mut self.bus, 12);
+        let r12 = word(&mut self.bus, 16);
+        let lr = word(&mut self.bus, 20);
+        let pc = word(&mut self.bus, 24);
+        let xpsr = word(&mut self.bus, 28);
+        self.cpu.r[0] = r0;
+        self.cpu.r[1] = r1;
+        self.cpu.r[2] = r2;
+        self.cpu.r[3] = r3;
+        self.cpu.r[12] = r12;
+        self.cpu.r[LR] = lr;
+        self.cpu.xpsr = crate::regs::Xpsr::from_bits(xpsr);
+        self.cpu.spsel = use_psp;
+        let new_sp = sp.wrapping_add(32);
+        if use_psp {
+            self.cpu.psp = new_sp;
+        } else {
+            self.cpu.msp = new_sp;
+        }
+        self.cpu.branch(pc);
     }
 
     /// Loads SP and the reset vector from the vector table at address 0.
