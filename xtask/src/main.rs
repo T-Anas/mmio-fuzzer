@@ -163,6 +163,7 @@ fn build_targets() -> Result<()> {
         .arg(&main_obj)
         .arg(&compat_obj)
         .arg(&mqtt_obj)
+        .arg("-lgcc")
         .arg("-o")
         .arg(&elf)
         .current_dir(&target);
@@ -180,7 +181,10 @@ fn build_targets() -> Result<()> {
     if !source.contains(needle) {
         bail!("cannot locate the publish length parse in mqtt.c; upstream changed?");
     }
-    std::fs::write(build.join("mqtt_fixed.c"), source.replacen(needle, &guard, 1))?;
+    std::fs::write(
+        build.join("mqtt_fixed.c"),
+        source.replacen(needle, &guard, 1),
+    )?;
 
     let fixed_obj = build.join("mqtt_fixed.o");
     let mut cmd = Command::new(&cc);
@@ -203,6 +207,7 @@ fn build_targets() -> Result<()> {
         .arg(&main_obj)
         .arg(&compat_obj)
         .arg(&fixed_obj)
+        .arg("-lgcc")
         .arg("-o")
         .arg(&fixed_elf)
         .current_dir(&target);
