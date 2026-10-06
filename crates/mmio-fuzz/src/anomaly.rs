@@ -19,6 +19,8 @@ pub enum AnomalyKind {
     /// The firmware touched a guard hole next to a buffer, stack or heap:
     /// a strong sign of an out-of-bounds access.
     GuardHit,
+    /// The firmware touched a poisoned redzone inside mapped memory.
+    OutOfBounds,
     /// Execution never terminated within the step budget.
     Hang,
     /// The engine itself hit an internal error.
@@ -33,6 +35,7 @@ impl AnomalyKind {
             AnomalyKind::HardFault
                 | AnomalyKind::UnmappedAccess
                 | AnomalyKind::GuardHit
+                | AnomalyKind::OutOfBounds
                 | AnomalyKind::Hang
         )
     }

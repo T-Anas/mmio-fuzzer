@@ -81,6 +81,7 @@ impl Testcase {
             AnomalyKind::InvalidOpcode => "badop",
             AnomalyKind::UnmappedAccess => "unmapped",
             AnomalyKind::GuardHit => "guard",
+            AnomalyKind::OutOfBounds => "oob",
             AnomalyKind::Hang => "hang",
             AnomalyKind::EmulatorError => "emu",
         };

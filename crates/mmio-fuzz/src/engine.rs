@@ -460,6 +460,12 @@ fn anomaly_from_error(error: CoreError, pc: u32, steps: u64) -> Anomaly {
             steps,
             format!("unmapped access at {addr}"),
         ),
+        CoreError::OutOfBounds { addr, .. } => Anomaly::new(
+            AnomalyKind::OutOfBounds,
+            pc,
+            steps,
+            format!("out-of-bounds access at {addr}"),
+        ),
         CoreError::StepLimit(_) => Anomaly::new(AnomalyKind::Hang, pc, steps, "step limit"),
         other => Anomaly::new(AnomalyKind::EmulatorError, pc, steps, other.to_string()),
     }
