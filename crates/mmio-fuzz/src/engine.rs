@@ -336,7 +336,9 @@ impl Engine {
         if let Some(addr) = self.config.halt_addr {
             handler = handler.with_halt(addr, exit.clone());
         }
-        memory.set_mmio_handler(handler);
+        let system = crate::interrupt::SystemControl::new();
+        let system_state = system.state();
+        memory.set_mmio_handler(crate::interrupt::Router::new(system, handler));
 
         let log = Rc::new(RefCell::new(AccessLog::new()));
         let sink = log.clone();
@@ -372,6 +374,15 @@ impl Engine {
                 match core.step() {
                     Ok(()) => {
                         steps += 1;
+                        // Advance the tick timer and take any pending IRQ.
+                        {
+                            let mut s = system_state.borrow_mut();
+                            s.tick();
+                            if let Some(exception) = s.next_exception(core.cpu.primask) {
+                                s.mark_taken(exception);
+                                core.raise_exception(exception);
+                            }
+                        }
                         if let Some(code) = exit.get() {
                             exit_code = Some(code);
                             break;
