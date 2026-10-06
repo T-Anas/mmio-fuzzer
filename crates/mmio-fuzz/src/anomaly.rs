@@ -16,6 +16,9 @@ pub enum AnomalyKind {
     InvalidOpcode,
     /// The firmware tried to touch an address nothing maps.
     UnmappedAccess,
+    /// The firmware touched a guard hole next to a buffer, stack or heap:
+    /// a strong sign of an out-of-bounds access.
+    GuardHit,
     /// Execution never terminated within the step budget.
     Hang,
     /// The engine itself hit an internal error.
@@ -27,7 +30,10 @@ impl AnomalyKind {
     pub fn is_target_bug(self) -> bool {
         matches!(
             self,
-            AnomalyKind::HardFault | AnomalyKind::UnmappedAccess | AnomalyKind::Hang
+            AnomalyKind::HardFault
+                | AnomalyKind::UnmappedAccess
+                | AnomalyKind::GuardHit
+                | AnomalyKind::Hang
         )
     }
 }
