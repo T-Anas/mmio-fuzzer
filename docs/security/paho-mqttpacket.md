@@ -1,117 +1,116 @@
-# Unchecked MQTT remaining length → out-of-bounds read in Eclipse Paho MQTTPacket
+# Eclipse Paho MQTTPacket — memory-safety findings
 
-> Internal finding. Not disclosed externally. Reproduction and analysis below.
+> Internal report. Not yet disclosed. Reachability assessed, PoCs validated
+> under host AddressSanitizer and under the mmio-fuzz Cortex-M0 emulator.
 
-## Summary
+Component: `paho.mqtt.embedded-c`, directory `MQTTPacket`.
+Commit tested: `6035ea2d4922bb7558b444fb2a051743f3f1974b`.
+License: EPL-2.0 / EDL-1.0.
 
-The MQTT deserialisers in Eclipse Paho **MQTTPacket** (the `paho.mqtt.embedded-c`
-repository) derive the end of a packet from the MQTT *remaining length* field
-without ever checking it against the caller-supplied buffer length. A crafted
-packet therefore makes the library read past the buffer.
+Two issues were found by the `mmio-fuzz` pipeline and validated independently
+under ASan.
 
-* Component: `MQTTPacket/src` (`MQTTPacket.c`, `MQTTSubscribeServer.c`, and the
-  other deserialisers)
-* Commit tested: `6035ea2d4922bb7558b444fb2a051743f3f1974b`
-* Class: CWE-125 out-of-bounds read
-* Severity: **medium** — remote (MQTT peer), no authentication required at the
-  framing layer; on a memory-constrained MCU it is a clean denial of service,
-  and it can disclose adjacent memory.
+---
 
-## Root cause
+## Finding 1 — deserialisers ignore `buflen` (out-of-bounds read)
 
-`MQTTDeserialize_subscribe` (and friends) do:
+**CWE-125.** The buffer deserialisers (`MQTTDeserialize_publish`,
+`_subscribe`, `_unsubscribe`, `_connack`, `_suback`, `_unsuback`, `_ack`) read
+the MQTT *remaining length* into `mylen` and compute
 
 ```c
-rc = MQTTPacket_decodeBuf(curdata, &mylen);   /* attacker-controlled */
-curdata += rc;
-enddata = curdata + mylen;                    /* no check against buflen */
-...
-while (curdata < enddata) {
-    if (!readMQTTLenString(&topicFilters[*count], &curdata, enddata)) goto exit;
-    ...
-}
+enddata = curdata + mylen;     /* mylen is attacker-controlled */
 ```
 
-`readMQTTLenString` only validates a string against `enddata`, which is itself
-derived from the untrusted `mylen`, so the bound is meaningless. A large
-`mylen` plus a large topic length walks `curdata` far past the buffer; the
-next `readInt` dereferences that address.
+`mylen` is **never** compared against the caller-supplied `buflen`. Every
+subsequent bound check is expressed against `enddata`, so it is meaningless.
+`readMQTTLenString` then accepts a topic length up to the bogus `enddata`,
+which walks `curdata` past the buffer; the next `readInt`/`readChar`
+dereferences the wild pointer.
 
-The same pattern exists in `MQTTDeserialize_publish`,
-`MQTTDeserialize_unsubscribe`, and the other buffer deserialisers, which all
-call `MQTTPacket_decodeBuf` and trust its result.
+### Reachability (verified)
 
-### Deserialisers reached (Cortex-M0 build)
-
-| Packet | Faulting site | Symbol |
+| Caller | Bounds `rem_len`? | Exposed |
 | --- | --- | --- |
-| SUBSCRIBE | `0x0800_00b2` | `readMQTTLenString` |
-| UNSUBSCRIBE | `0x0800_00a0` | `readInt` |
-| PUBLISH | `0x0800_041a` | consumer read of the returned payload pointer |
+| `MQTTPacket_read` | yes (`rem_len + len > buflen` → exit) | no |
+| `MQTTClient-C` `readPacket` | yes (`rem_len > readbuf_size - len` → exit, fix #96) | no |
+| Paho C++ `MQTT::Client::readPacket` | yes (`rem_len > MAX_MQTT_PACKET_SIZE - len`) | no |
+| **public `MQTTDeserialize_*` API** | n/a | **yes** |
+| **`MQTTFormat_toClientString` / `toServerString`** | no | **yes** |
 
-All three stem from the unvalidated `mylen`. Archived reproducers:
-`targets/paho/findings/{subscribe-readmqttlenstring,unsubscribe-readint}.mmf`
-(replay with `mmio-fuzz replay <case> targets/prebuilt/paho_mqtt.elf`).
+So the bundled clients' normal receive loop is **not** exploitable. The
+exposed surface is the public deserialiser API — the documented way to parse a
+received packet, used directly by embedded MQTT **brokers / gateways** and by
+applications that log packets with `MQTTFormat_*` — whenever the caller passes
+a buffer whose in-band remaining length exceeds `buflen`. The `buflen`
+parameter exists precisely to prevent this and is ignored.
 
-## Reproduction
+**Severity:** medium for a server/broker that parses untrusted client packets
+with this API (remote, unauthenticated at the framing layer); low for the
+bundled clients, which pre-bound the length.
 
-### Host (AddressSanitizer)
+### PoC
 
-```sh
-cd targets/paho/poc
-gcc -g -fsanitize=address -I ../mqttpacket poc_subscribe.c \
-    ../mqttpacket/MQTTPacket.c ../mqttpacket/MQTTSubscribeServer.c -o poc
-./poc
-# AddressSanitizer: stack-buffer-overflow
-#   #0 readInt            MQTTPacket.c:128
-#   #1 readMQTTLenString  MQTTPacket.c:223
-#   #2 MQTTDeserialize_subscribe MQTTSubscribeServer.c:64
-```
+* Host ASan: `targets/paho/poc/poc_subscribe.c` → stack-buffer-overflow READ
+  in `readInt` ← `readMQTTLenString` ← `MQTTDeserialize_subscribe`.
+* Cortex-M0 under mmio-fuzz: `crates/mmio-fuzz/tests/paho_mqtt.rs`. Input
+  region followed by a redzone and guard holes; the malformed SUBSCRIBE
+  yields `UnmappedAccess at 0x20014008`. The engine also rediscovers it
+  autonomously from a benign seed.
+* Archived `.mmf`: `targets/paho/findings/*.mmf` (replay reproduces).
 
-### Cortex-M0 firmware under mmio-fuzz
+### Fix
 
-`crates/mmio-fuzz/tests/paho_mqtt.rs` runs the real library on the
-ARMv6-M interpreter. The input region is followed by a redzone and guard
-holes, so any read past the buffer is reported by the emulator:
-
-```
-malformed_subscribe_reads_out_of_bounds:
-  UnmappedAccess at 0x20014008 (read)
-```
-
-The engine also **rediscovers the bug on its own** from a single benign
-SUBSCRIBE seed (`fuzzer_rediscovers_the_out_of_bounds_from_a_benign_seed`),
-without being given the proof of concept.
-
-## Impact
-
-An MQTT peer controls the bytes parsed here:
-
-* an MQTT **client** parses CONNACK/PUBLISH/SUBACK/UNSUBACK from the broker;
-* an MQTT **server** parses SUBSCRIBE/UNSUBSCRIBE/PUBLISH from clients.
-
-A single malformed packet can drive the parser out of bounds. On the
-emulated Cortex-M0 target the read hits unmapped memory, which on real
-hardware is a HardFault → device reset / DoS. Where the read stays in
-mapped memory it can leak adjacent data through whatever the application
-does with the parsed payload.
-
-## Fix
-
-Validate the remaining length against the supplied buffer before using it,
-e.g. right after decoding it:
+Validate the remaining length against the buffer before use, in every
+deserialiser, and compare string lengths against the *buffer* end:
 
 ```c
-if (mylen < 0 || mylen > buflen - (curdata - buf)) {
+if (mylen < 0 || (size_t)mylen > (size_t)buflen - (size_t)(curdata - buf)) {
     goto exit;
 }
 ```
 
-and apply the same guard in every deserialiser. String length checks should
-compare against the *buffer* end, not against `curdata + mylen`.
+---
 
-## Status
+## Finding 2 — off-by-one write in `MQTTFormat_toServerString`
 
-Found by the mmio-fuzz pipeline (Cortex-M0 harness + shadow/guard memory).
-Reproduced independently under host ASan. Internal report only; no external
-disclosure performed.
+**CWE-787.** `MQTTFormat_toServerString` ends with
+
+```c
+strbuf[strbuflen] = '\0';
+```
+
+`strbuflen` is the **size** of `strbuf` (it is passed to `snprintf` as the
+size just above), so this writes one byte past the caller's buffer. It happens
+on **every call**, including on a valid packet, and there is no bounds check.
+
+`MQTTFormat_toClientString` does not have this line.
+
+**Severity:** low (one NUL byte), but deterministic; depending on the caller's
+stack/heap layout the overwritten byte may be a length field, a saved pointer,
+or a stack canary.
+
+### PoC
+
+`targets/paho/poc/poc_format_offbyone.c` → ASan reports a 1-byte
+stack-buffer-overflow WRITE at `MQTTFormat.c:265` on a benign PINGRESP.
+
+### Fix
+
+Remove the line; `snprintf` already NUL-terminates. If a guarantee is wanted,
+use `strbuf[strbuflen - 1] = '\0';`.
+
+---
+
+## Method
+
+Found with `mmio-fuzz`: the real `MQTTPacket` sources compiled for Cortex-M0
+behind a UART-style input buffer, executed on the pure-Rust ARMv6-M
+interpreter, with shadow-memory redzones and guard holes. Confirmed by an
+independent host ASan build of the same functions. See
+`docs/security/hunt-plan.md` for the method and capabilities.
+
+## Credit / status
+
+Internal report. No external disclosure performed. Suggested reporting
+channel and a ready-to-send message: `docs/security/paho-report-to-send.md`.
