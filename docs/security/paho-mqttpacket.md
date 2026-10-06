@@ -41,6 +41,18 @@ The same pattern exists in `MQTTDeserialize_publish`,
 `MQTTDeserialize_unsubscribe`, and the other buffer deserialisers, which all
 call `MQTTPacket_decodeBuf` and trust its result.
 
+### Deserialisers reached (Cortex-M0 build)
+
+| Packet | Faulting site | Symbol |
+| --- | --- | --- |
+| SUBSCRIBE | `0x0800_00b2` | `readMQTTLenString` |
+| UNSUBSCRIBE | `0x0800_00a0` | `readInt` |
+| PUBLISH | `0x0800_041a` | consumer read of the returned payload pointer |
+
+All three stem from the unvalidated `mylen`. Archived reproducers:
+`targets/paho/findings/{subscribe-readmqttlenstring,unsubscribe-readint}.mmf`
+(replay with `mmio-fuzz replay <case> targets/prebuilt/paho_mqtt.elf`).
+
 ## Reproduction
 
 ### Host (AddressSanitizer)
