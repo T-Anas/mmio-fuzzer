@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use mmio_core::{Access, CoreError, FnObserver, PhysAddr};
+use mmio_core::{Access, AccessWidth, CoreError, FnObserver, PhysAddr};
 use mmio_emu::{CortexM, Cpu};
 use mmio_infer::{infer, AccessLog, HardwareModel, InferConfig, RegisterModel};
 
@@ -51,6 +51,11 @@ pub struct EngineConfig {
     pub layout: MemoryLayout,
     /// Base address of a UART-like device that streams the fuzz input.
     pub stream_uart: Option<u32>,
+    /// Chunk width for the streaming device.
+    pub stream_width: AccessWidth,
+    /// Derive the chunk width from the first input byte (1/2/4), so the
+    /// fuzzer explores framing.
+    pub stream_width_adaptive: bool,
     /// Address of a halt register: writing it ends a run cleanly.
     pub halt_addr: Option<u32>,
 }
@@ -68,6 +73,8 @@ impl Default for EngineConfig {
             no_edge_limit: 8_192,
             layout: MemoryLayout::default(),
             stream_uart: None,
+            stream_width: AccessWidth::Byte,
+            stream_width_adaptive: false,
             halt_addr: None,
         }
     }
@@ -331,7 +338,16 @@ impl Engine {
             .with_overrides(overrides.clone())
             .with_fallback(self.config.fallback);
         if let Some(base) = self.config.stream_uart {
-            handler = handler.with_stream(base, input.bytes.clone());
+            let width = if self.config.stream_width_adaptive {
+                match input.bytes.first().copied().unwrap_or(0) % 3 {
+                    0 => AccessWidth::Byte,
+                    1 => AccessWidth::HalfWord,
+                    _ => AccessWidth::Word,
+                }
+            } else {
+                self.config.stream_width
+            };
+            handler = handler.with_stream_width(base, input.bytes.clone(), width);
         }
         if let Some(addr) = self.config.halt_addr {
             handler = handler.with_halt(addr, exit.clone());
