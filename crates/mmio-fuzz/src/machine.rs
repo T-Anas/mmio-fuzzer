@@ -164,6 +164,12 @@ impl MemoryLayout {
         self
     }
 
+    /// Sets the ordinary RAM window.
+    pub fn with_ram(mut self, base: u32, size: u32) -> Self {
+        self.ram = Some((base, size));
+        self
+    }
+
     pub fn with_heap(mut self, base: u32, size: u32) -> Self {
         self.heap = Some((base, size));
         self
