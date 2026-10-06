@@ -13,6 +13,7 @@ name = "mmio-fuzz"
 path = "src/main.rs"
 
 [dependencies]
+mmio-core.workspace = true
 mmio-fuzz.workspace = true
 mmio-infer.workspace = true
 anyhow.workspace = true

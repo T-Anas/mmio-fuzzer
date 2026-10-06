@@ -43,6 +43,12 @@ enum Command {
         /// Deliver the fuzz input through a UART-like device at this base.
         #[arg(long)]
         stream_uart: Option<String>,
+        /// Chunk width for the streaming device: 1, 2 or 4 (default 1).
+        #[arg(long)]
+        stream_width: Option<String>,
+        /// Derive the chunk width from the first input byte (explores framing).
+        #[arg(long)]
+        stream_adaptive: bool,
         /// Halt register address; writing it ends a run cleanly.
         #[arg(long)]
         halt_addr: Option<String>,
@@ -97,6 +103,8 @@ fn main() -> Result<()> {
             out,
             input_mem,
             stream_uart,
+            stream_width,
+            stream_adaptive,
             halt_addr,
             ram,
             stack,
@@ -113,6 +121,8 @@ fn main() -> Result<()> {
             LayoutArgs {
                 input_mem,
                 stream_uart,
+                stream_width,
+                stream_adaptive,
                 halt_addr,
                 ram,
                 stack,
@@ -133,6 +143,8 @@ fn main() -> Result<()> {
 struct LayoutArgs {
     input_mem: Option<String>,
     stream_uart: Option<String>,
+    stream_width: Option<String>,
+    stream_adaptive: bool,
     halt_addr: Option<String>,
     ram: Option<String>,
     stack: Option<String>,
@@ -197,6 +209,13 @@ fn build_config(
     }
 
     let stream_uart = args.stream_uart.as_deref().map(parse_u32).transpose()?;
+    let stream_width = match args.stream_width.as_deref() {
+        None => mmio_core::AccessWidth::Byte,
+        Some("1") | Some("byte") => mmio_core::AccessWidth::Byte,
+        Some("2") | Some("half") => mmio_core::AccessWidth::HalfWord,
+        Some("4") | Some("word") => mmio_core::AccessWidth::Word,
+        Some(other) => bail!("unsupported --stream-width {other:?} (use 1, 2 or 4)"),
+    };
     let halt_addr = args.halt_addr.as_deref().map(parse_u32).transpose()?;
 
     Ok(EngineConfig {
@@ -205,6 +224,8 @@ fn build_config(
         max_steps: max_steps.unwrap_or(defaults.max_steps),
         layout,
         stream_uart,
+        stream_width,
+        stream_width_adaptive: args.stream_adaptive,
         halt_addr,
         ..defaults
     })
