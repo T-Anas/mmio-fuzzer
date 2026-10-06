@@ -66,6 +66,20 @@ fn build_fixtures() -> Result<()> {
         .arg(&elf);
     run(cmd)?;
     println!("built {}", elf.display());
+
+    // guard_demo: a tiny assembly-only firmware that reads past its buffer.
+    let guard_obj = build.join("guard_demo.o");
+    compile(&cc, &common, &src.join("guard_demo.s"), &guard_obj)?;
+    let guard_elf = prebuilt.join("guard_demo.elf");
+    let mut cmd = Command::new(&cc);
+    cmd.args(["-mcpu=cortex-m0", "-mthumb", "-nostdlib", "-nostartfiles"])
+        .arg("-T")
+        .arg(src.join("link.ld"))
+        .arg(&guard_obj)
+        .arg("-o")
+        .arg(&guard_elf);
+    run(cmd)?;
+    println!("built {}", guard_elf.display());
     Ok(())
 }
 
