@@ -207,6 +207,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "mmio-core",
  "mmio-fuzz",
  "mmio-infer",
  "serde_json",
