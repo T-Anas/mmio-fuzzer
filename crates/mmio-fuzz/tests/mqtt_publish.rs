@@ -23,6 +23,7 @@ fn engine_for(elf: &[u8], iterations: u64) -> Engine {
             (0x2000_3000, 0x1000),
             (0x2000_5000, 0x3000),
         ],
+        redzones: Vec::new(),
     };
     let config = EngineConfig {
         layout,
