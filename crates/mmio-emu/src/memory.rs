@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use crate::shadow::Shadow;
 use mmio_core::{
     Access, AccessKind, AccessObserver, AccessWidth, Bus, CoreError, MemoryMap, MemoryRegion,
     PhysAddr, RegionKind, Result,
@@ -70,6 +71,8 @@ pub struct FlatMemory {
     seq: u64,
     /// PC supplied by the core before each access, for observers that care.
     current_pc: u32,
+    /// Optional shadow memory for redzone checks.
+    shadow: Option<Shadow>,
     /// When true, touching an unmapped address is an error instead of a zero.
     strict: bool,
 }
@@ -89,6 +92,7 @@ impl FlatMemory {
             observer: None,
             seq: 0,
             current_pc: 0,
+            shadow: None,
             strict: true,
         }
     }
@@ -122,6 +126,22 @@ impl FlatMemory {
     /// observers can attribute accesses to a code location.
     pub fn set_current_pc(&mut self, pc: u32) {
         self.current_pc = pc;
+    }
+
+    /// Installs a shadow-memory configuration.
+    pub fn set_shadow(&mut self, shadow: Shadow) {
+        self.shadow = Some(shadow);
+    }
+
+    pub fn shadow(&self) -> Option<&Shadow> {
+        self.shadow.as_ref()
+    }
+
+    /// Poisons `[base, base+size)` as a redzone, creating the shadow if needed.
+    pub fn poison(&mut self, base: u32, size: u32) {
+        self.shadow
+            .get_or_insert_with(Shadow::new)
+            .poison(base, size);
     }
 
     pub fn map(&self) -> &MemoryMap {
@@ -186,6 +206,9 @@ impl FlatMemory {
 
 impl Bus for FlatMemory {
     fn read(&mut self, addr: PhysAddr, width: AccessWidth) -> Result<u32> {
+        if let Some(shadow) = &self.shadow {
+            shadow.check(addr, AccessKind::Read, width)?;
+        }
         let region = self.map.find(addr).cloned();
         let value = match region {
             Some(region) => {
@@ -216,6 +239,9 @@ impl Bus for FlatMemory {
     }
 
     fn write(&mut self, addr: PhysAddr, width: AccessWidth, value: u32) -> Result<()> {
+        if let Some(shadow) = &self.shadow {
+            shadow.check(addr, AccessKind::Write, width)?;
+        }
         let region = self.map.find(addr).cloned();
         match region {
             Some(region) => {
@@ -361,5 +387,22 @@ mod tests {
                 .unwrap(),
             0x0403_0201
         );
+    }
+
+    #[test]
+    fn redzone_access_is_out_of_bounds() {
+        let mut m = memory();
+        m.poison(0x2000_0100, 0x10);
+        assert!(matches!(
+            m.read(PhysAddr::new(0x2000_00ff), AccessWidth::HalfWord),
+            Err(CoreError::OutOfBounds { .. })
+        ));
+        assert!(matches!(
+            m.write(PhysAddr::new(0x2000_0104), AccessWidth::Word, 1),
+            Err(CoreError::OutOfBounds { .. })
+        ));
+        assert!(m
+            .read(PhysAddr::new(0x2000_0000), AccessWidth::Word)
+            .is_ok());
     }
 }
