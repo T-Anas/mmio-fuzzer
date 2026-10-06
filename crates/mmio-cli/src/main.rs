@@ -58,6 +58,9 @@ enum Command {
         /// Leave `BASE:SIZE` unmapped, reported as a guard hit (repeatable).
         #[arg(long = "guard")]
         guards: Vec<String>,
+        /// Poison `BASE:SIZE` inside mapped RAM, reported as out-of-bounds (repeatable).
+        #[arg(long = "redzone")]
+        redzones: Vec<String>,
         /// Seed corpus with the bytes of this file (repeatable).
         #[arg(long = "seed-file")]
         seed_files: Vec<PathBuf>,
@@ -99,6 +102,7 @@ fn main() -> Result<()> {
             stack,
             heap,
             guards,
+            redzones,
             seed_files,
         } => run(
             firmware,
@@ -114,6 +118,7 @@ fn main() -> Result<()> {
                 stack,
                 heap,
                 guards,
+                redzones,
                 seed_files,
             },
         ),
@@ -133,6 +138,7 @@ struct LayoutArgs {
     stack: Option<String>,
     heap: Option<String>,
     guards: Vec<String>,
+    redzones: Vec<String>,
     seed_files: Vec<PathBuf>,
 }
 
@@ -160,7 +166,11 @@ fn build_config(
     args: &LayoutArgs,
 ) -> Result<EngineConfig> {
     let defaults = EngineConfig::default();
-    let mut layout = if args.ram.is_some() || !args.guards.is_empty() || args.stack.is_some() {
+    let mut layout = if args.ram.is_some()
+        || !args.guards.is_empty()
+        || !args.redzones.is_empty()
+        || args.stack.is_some()
+    {
         MemoryLayout::tight()
     } else {
         defaults.layout.clone()
@@ -180,6 +190,10 @@ fn build_config(
     for guard in &args.guards {
         let (base, size) = parse_range(guard)?;
         layout.guards.push((base, size));
+    }
+    for redzone in &args.redzones {
+        let (base, size) = parse_range(redzone)?;
+        layout.redzones.push((base, size));
     }
 
     let stream_uart = args.stream_uart.as_deref().map(parse_u32).transpose()?;
