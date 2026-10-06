@@ -227,6 +227,78 @@ fn build_targets() -> Result<()> {
         .current_dir(&target);
     run(cmd)?;
     println!("built {}", fixed_elf.display());
+
+    // Paho MQTTPacket harness.
+    let paho = root.join("targets").join("paho");
+    let paho_build = paho.join("build");
+    std::fs::create_dir_all(&paho_build)?;
+    let paho_common: [&str; 14] = [
+        "-mcpu=cortex-m0",
+        "-mthumb",
+        "-ffreestanding",
+        "-nostdlib",
+        "-nostartfiles",
+        "-Os",
+        "-Wall",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-I",
+        "mqttpacket",
+        "-I",
+        "harness",
+        "-I",
+    ];
+    let paho_sources = [
+        "mqttpacket/MQTTPacket.c",
+        "mqttpacket/MQTTDeserializePublish.c",
+        "mqttpacket/MQTTConnectClient.c",
+        "mqttpacket/MQTTSubscribeServer.c",
+        "mqttpacket/MQTTSubscribeClient.c",
+        "mqttpacket/MQTTUnsubscribeServer.c",
+        "mqttpacket/MQTTUnsubscribeClient.c",
+        "harness/main.c",
+        "harness/compat.c",
+    ];
+    let mut paho_objects = Vec::new();
+    for source in paho_sources {
+        let stem = source.rsplit('/').next().unwrap().replace(".c", ".o");
+        let object = paho_build.join(&stem);
+        let mut cmd = Command::new(&cc);
+        cmd.current_dir(&paho)
+            .args(paho_common)
+            .arg("harness/include")
+            .arg("-c")
+            .arg(source)
+            .arg("-o")
+            .arg(&object);
+        run(cmd)?;
+        paho_objects.push(object);
+    }
+    let paho_startup = paho_build.join("startup.o");
+    let mut cmd = Command::new(&cc);
+    cmd.current_dir(&paho)
+        .arg("-mcpu=cortex-m0")
+        .arg("-mthumb")
+        .arg("-c")
+        .arg("harness/startup.s")
+        .arg("-o")
+        .arg(&paho_startup);
+    run(cmd)?;
+
+    let paho_elf = prebuilt.join("paho_mqtt.elf");
+    let mut cmd = Command::new(&cc);
+    cmd.args(["-mcpu=cortex-m0", "-mthumb", "-nostdlib", "-nostartfiles"])
+        .arg("-Wl,--gc-sections")
+        .arg("-T")
+        .arg("harness/link.ld")
+        .arg(&paho_startup)
+        .args(&paho_objects)
+        .arg("-lgcc")
+        .arg("-o")
+        .arg(&paho_elf)
+        .current_dir(&paho);
+    run(cmd)?;
+    println!("built {}", paho_elf.display());
     Ok(())
 }
 

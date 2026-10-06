@@ -25,3 +25,4 @@
 
 # Generated target objects
 /targets/build/
+/targets/*/build/
