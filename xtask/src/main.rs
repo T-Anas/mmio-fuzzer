@@ -86,6 +86,20 @@ fn build_fixtures() -> Result<()> {
         .arg(&guard_elf);
     run(cmd)?;
     println!("built {}", guard_elf.display());
+
+    // systick_demo: installs a SysTick handler and halts after three ticks.
+    let systick_obj = build.join("systick_demo.o");
+    compile(&cc, &common, &src.join("systick_demo.s"), &systick_obj)?;
+    let systick_elf = prebuilt.join("systick_demo.elf");
+    let mut cmd = Command::new(&cc);
+    cmd.args(["-mcpu=cortex-m0", "-mthumb", "-nostdlib", "-nostartfiles"])
+        .arg("-T")
+        .arg(src.join("link.ld"))
+        .arg(&systick_obj)
+        .arg("-o")
+        .arg(&systick_elf);
+    run(cmd)?;
+    println!("built {}", systick_elf.display());
     Ok(())
 }
 
